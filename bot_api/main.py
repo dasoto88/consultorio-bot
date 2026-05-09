@@ -2,7 +2,7 @@ import os
 import requests
 from fastapi import FastAPI, Request
 from prisma import Prisma
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = FastAPI()
 db = Prisma()
@@ -10,48 +10,45 @@ db = Prisma()
 @app.on_event("startup")
 async def startup(): await db.connect()
 
-def send_whatsapp(to, text):
-    url = f"https://graph.facebook.com/v20.0/{os.getenv('WHATSAPP_PHONE_ID')}/messages"
-    headers = {"Authorization": f"Bearer {os.getenv('WHATSAPP_TOKEN')}"}
-    data = {"messaging_product": "whatsapp", "to": to, "text": {"body": text}}
-    requests.post(url, headers=headers, json=data)
+def send_whatsapp(phone_id, to, text):
+    requests.post(f"https://graph.facebook.com/v20.0/{phone_id}/messages",
+        headers={"Authorization": f"Bearer {os.getenv('MASTER_WHATSAPP_TOKEN')}"},
+        json={"messaging_product": "whatsapp", "to": to, "text": {"body": text}}
+    )
 
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
     try:
-        msg = data['entry'][0]['changes'][0]['value']['messages'][0]
+        value = data['entry'][0]['changes'][0]['value']
+        phone_id = value['metadata']['phone_number_id']
+        msg = value['messages'][0]
         from_num = msg['from']
         text = msg.get('text', {}).get('body', '').strip()
-    except:
-        return {"status": "ok"}
+    except: return {"status": "ok"}
 
-    paciente = await db.paciente.find_unique(where={'telefono': from_num})
+    doctor = await db.doctor.find_unique(where={"whatsappPhoneId": phone_id})
+    if not doctor: return {"status": "no doctor"}
+
+    paciente = await db.paciente.find_unique(where={'telefono_doctorId': {'telefono': from_num, 'doctorId': doctor.id}})
     if not paciente:
-        paciente = await db.paciente.create(data={'telefono': from_num})
+        paciente = await db.paciente.create(data={'telefono': from_num, 'doctorId': doctor.id})
 
-    CLINIC = os.getenv('CLINIC_NAME')
-    DOCTOR = os.getenv('DOCTOR_NAME')
-    respuesta = ""
-
-    if 'cita' in text.lower() or 'hola' in text.lower():
-        respuesta = f"*{CLINIC}*\nHola, soy el asistente de {DOCTOR} 👨‍⚕️\n\nPara agendar escribe la fecha: *DD/MM* Ej: 15/05\nHorario: {os.getenv('HORARIO_LV')}"
-
-    elif "/" in text and text.replace('/', '').isdigit():
+    if 'cita' in text.lower():
+        respuesta = f"*{doctor.clinicName}*\nHola, soy el asistente de {doctor.doctorName}.\nPara agendar escribe fecha: *DD/MM*"
+    elif "/" in text and text.replace('/','').isdigit():
         dia, mes = map(int, text.split('/'))
         año = datetime.now().year if mes >= datetime.now().month else datetime.now().year + 1
         fecha = datetime(año, mes, dia, 10, 0)
-        await db.cita.create(data={'pacienteId': paciente.id, 'fecha': fecha, 'status': 'PENDIENTE'})
-        respuesta = f"Fecha *{text}* pre-agendada a las 10:00am.\n\nPara confirmar escribe tu *nombre completo*."
-
-    elif not paciente.nombre and len(text) > 3:
+        await db.cita.create(data={'pacienteId': paciente.id, 'doctorId': doctor.id, 'fecha': fecha})
+        respuesta = f"Pre-agendé tu cita para {text} 10:00am. Escribe tu *nombre completo* para confirmar."
+    elif not paciente.nombre:
         await db.paciente.update(where={'id': paciente.id}, data={'nombre': text})
-        respuesta = f"Gracias {text}. Tu cita quedó *PENDIENTE DE CONFIRMACIÓN*.\nTe avisamos por aquí cuando el doctor la confirme."
-
+        respuesta = f"Gracias {text}. Tu cita está pendiente. El doctor te confirma en breve."
     else:
-        respuesta = f"Hola {paciente.nombre or ''}. Escribe *cita* para agendar.\nUbicación: {os.getenv('ADDRESS')}"
+        respuesta = f"Hola {paciente.nombre}. Escribe *cita* para agendar."
 
-    send_whatsapp(from_num, respuesta)
+    send_whatsapp(doctor.whatsappPhoneId, from_num, respuesta)
     return {"status": "ok"}
 
 @app.get("/webhook")
