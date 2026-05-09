@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+model Paciente {
+  id Int @id @default(autoincrement())
+  nombre String?
+  telefono String @unique
+  citas Cita[]
+  createdAt DateTime @default(now())
+}
+
+model Cita {
+  id Int @id @default(autoincrement())
+  pacienteId Int
+  paciente Paciente @relation(fields: [pacienteId], references: [id])
+  fecha DateTime
+  motivo String @default("Consulta general")
+  status String @default("PENDIENTE")
+  createdAt DateTime @default(now())
+}
