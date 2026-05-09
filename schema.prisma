@@ -8,20 +8,70 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
+model Owner {
+  id Int @id @default(autoincrement())
+  email String @unique
+  password String
+}
+
+model Doctor {
+  id Int @id @default(autoincrement())
+  clinicName String
+  doctorName String
+  specialty String
+  logoUrl String @default("https://i.imgur.com/4AiXzf8.png")
+  address String
+  horarioLv String @default("09:00-18:00")
+  whatsappPhone String @unique
+  whatsappPhoneId String @unique
+  username String @unique
+  password String
+  secretarias DoctorSecretaria[] // Relación muchos a muchos
+  pacientes Paciente[]
+  citas Cita[]
+  createdAt DateTime @default(now())
+}
+
+model Secretaria {
+  id Int @id @default(autoincrement())
+  nombre String
+  username String @unique
+  password String
+  doctores DoctorSecretaria[] // Relación muchos a muchos
+  createdAt DateTime @default(now())
+}
+
+// Tabla intermedia: 1 secre puede trabajar con varios doctores
+model DoctorSecretaria {
+  id Int @id @default(autoincrement())
+  doctorId Int
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  secretariaId Int
+  secretaria Secretaria @relation(fields: [secretariaId], references: [id], onDelete: Cascade)
+  @@unique([doctorId, secretariaId])
+}
+
 model Paciente {
   id Int @id @default(autoincrement())
   nombre String?
-  telefono String @unique
+  telefono String
+  doctorId Int
+  doctor Doctor @relation(fields: [doctorId], references: [id])
   citas Cita[]
   createdAt DateTime @default(now())
+  @@unique([telefono, doctorId])
 }
 
 model Cita {
   id Int @id @default(autoincrement())
   pacienteId Int
   paciente Paciente @relation(fields: [pacienteId], references: [id])
+  doctorId Int
+  doctor Doctor @relation(fields: [doctorId], references: [id])
   fecha DateTime
   motivo String @default("Consulta general")
-  status String @default("PENDIENTE")
+  status String @default("PENDIENTE") // PENDIENTE, CONFIRMADA, CANCELADA, COMPLETADA
+  creadaPor String @default("PACIENTE")
+  notas String?
   createdAt DateTime @default(now())
 }
