@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+model Doctor {
+  id String @id @default(cuid())
+  nombreConsul String
+  nombreDoctor String
+  whatsapp String @unique
+  whatsappPhoneId String @unique
+  usuario String @unique
+  password String
+  createdAt DateTime @default(now())
+  pacientes Paciente[]
+  citas Cita[]
+}
+
+model Paciente {
+  id String @id @default(cuid())
+  nombre String
+  telefono String
+  doctorId String
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  citas Cita[]
+  createdAt DateTime @default(now())
+
+  @@unique([telefono, doctorId])
+}
+
+model Cita {
+  id String @id @default(cuid())
+  fecha DateTime
+  motivo String
+  doctorId String
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  pacienteId String
+  paciente Paciente @relation(fields: [pacienteId], references: [id])
+  createdAt DateTime @default(now())
+}
