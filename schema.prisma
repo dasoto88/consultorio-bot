@@ -8,12 +8,6 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
-model Owner {
-  id Int @id @default(autoincrement())
-  email String @unique
-  password String
-}
-
 model Doctor {
   id Int @id @default(autoincrement())
   clinicName String
@@ -26,7 +20,7 @@ model Doctor {
   whatsappPhoneId String @unique
   username String @unique
   password String
-  secretarias DoctorSecretaria[] // Relación muchos a muchos
+  secretarias DoctorSecretaria[]
   pacientes Paciente[]
   citas Cita[]
   createdAt DateTime @default(now())
@@ -37,11 +31,10 @@ model Secretaria {
   nombre String
   username String @unique
   password String
-  doctores DoctorSecretaria[] // Relación muchos a muchos
+  doctores DoctorSecretaria[]
   createdAt DateTime @default(now())
 }
 
-// Tabla intermedia: 1 secre puede trabajar con varios doctores
 model DoctorSecretaria {
   id Int @id @default(autoincrement())
   doctorId Int
@@ -70,7 +63,7 @@ model Cita {
   doctor Doctor @relation(fields: [doctorId], references: [id])
   fecha DateTime
   motivo String @default("Consulta general")
-  status String @default("PENDIENTE") // PENDIENTE, CONFIRMADA, CANCELADA, COMPLETADA
+  status String @default("PENDIENTE")
   creadaPor String @default("PACIENTE")
   notas String?
   createdAt DateTime @default(now())
