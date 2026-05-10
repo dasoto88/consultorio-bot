@@ -1,10 +1,80 @@
-model Reminder {
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "python"
+  interface = "asyncio"
+}
+
+model User {
   id String @id @default(cuid())
-  appointmentId String @unique
-  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  sendAt DateTime // Cuándo enviar el recordatorio
-  sent Boolean @default(false)
+  email String @unique
+  password String
+  name String
+  role Role @default(DOCTOR)
   createdAt DateTime @default(now())
+
+  doctor Doctor?
+  secretary Secretary?
+  appointmentsCreated Appointment[] @relation("CreatedBy")
+}
+
+enum Role {
+  SUPER_ADMIN
+  DOCTOR
+  SECRETARY
+}
+
+model Doctor {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cedula String @unique
+  especialidad String
+  whatsappNumber String @unique
+  whatsappPhoneId String
+  accessToken String
+  horarioInicio String @default("09:00")
+  horarioFin String @default("18:00")
+  duracionCita Int @default(30)
+
+  secretaries SecretaryDoctor[]
+  patients Patient[]
+  appointments Appointment[]
+}
+
+model Secretary {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  doctors SecretaryDoctor[]
+}
+
+model SecretaryDoctor {
+  id String @id @default(cuid())
+  secretaryId String
+  doctorId String
+
+  secretary Secretary @relation(fields: [secretaryId], references: [id], onDelete: Cascade)
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([secretaryId, doctorId])
+}
+
+model Patient {
+  id String @id @default(cuid())
+  doctorId String
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  name String
+  phone String
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+
+  @@unique([doctorId, phone])
 }
 
 model Appointment {
@@ -25,4 +95,20 @@ model Appointment {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Reminder {
+  id String @id @default(cuid())
+  appointmentId String @unique
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sendAt DateTime
+  sent Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+enum AppointmentStatus {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+  COMPLETADA
 }
