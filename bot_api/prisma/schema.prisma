@@ -1,22 +1,103 @@
-generator client {
-  provider = "prisma-client-py"
-  interface = "asyncio"
-}
-
 datasource db {
   provider = "postgresql"
   url = env("DATABASE_URL")
 }
 
-// Ejemplo para consultorio - borra y pon tus tablas
-model Doctor {
-  id Int @id @default(autoincrement())
-  nombre String
-  cedula String @unique
+generator client {
+  provider = "python"
+  interface = "asyncio"
 }
 
-model Paciente {
-  id Int @id @default(autoincrement())
-  nombre String
-  telefono String?
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  password String
+  name String
+  role Role @default(DOCTOR)
+  createdAt DateTime @default(now())
+
+  doctor Doctor?
+  secretary Secretary?
+  appointmentsCreated Appointment[] @relation("CreatedBy")
+}
+
+enum Role {
+  SUPER_ADMIN
+  DOCTOR
+  SECRETARY
+}
+
+model Doctor {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cedula String @unique
+  especialidad String
+  whatsappNumber String @unique // Número de WhatsApp Business API
+  whatsappPhoneId String // Phone Number ID de Meta
+  accessToken String // Token de Meta para enviar mensajes
+  horarioInicio String @default("09:00")
+  horarioFin String @default("18:00")
+  duracionCita Int @default(30) // minutos
+
+  secretaries SecretaryDoctor[]
+  patients Patient[]
+  appointments Appointment[]
+}
+
+model Secretary {
+  id String @id @default(cuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  doctors SecretaryDoctor[]
+}
+
+model SecretaryDoctor {
+  id String @id @default(cuid())
+  secretaryId String
+  doctorId String
+
+  secretary Secretary @relation(fields: [secretaryId], references: [id], onDelete: Cascade)
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([secretaryId, doctorId])
+}
+
+model Patient {
+  id String @id @default(cuid())
+  doctorId String
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  name String
+  phone String // Número de WhatsApp del paciente
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+
+  @@unique([doctorId, phone])
+}
+
+model Appointment {
+  id String @id @default(cuid())
+  doctorId String
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+  patientId String
+  patient Patient @relation(fields: [patientId], references: [id])
+  createdById String
+  createdBy User @relation("CreatedBy", fields: [createdById], references: [id])
+
+  fecha DateTime
+  motivo String
+  status AppointmentStatus @default(PENDIENTE)
+  origen String @default("MANUAL") // MANUAL o WHATSAPP
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AppointmentStatus {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+  COMPLETADA
 }
