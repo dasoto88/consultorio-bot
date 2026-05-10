@@ -14,7 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "secret")
 ALGORITHM = "HS256"
 
-engine = create_engine(DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1))
+engine = create_engine(DATABASE_URL.replace("postgres://", "postgresql://").replace("postgresql://", "postgresql+psycopg://"), pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
