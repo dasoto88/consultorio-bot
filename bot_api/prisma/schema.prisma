@@ -1,80 +1,10 @@
-datasource db {
-  provider = "postgresql"
-  url = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "python"
-  interface = "asyncio"
-}
-
-model User {
+model Reminder {
   id String @id @default(cuid())
-  email String @unique
-  password String
-  name String
-  role Role @default(DOCTOR)
+  appointmentId String @unique
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sendAt DateTime // Cuándo enviar el recordatorio
+  sent Boolean @default(false)
   createdAt DateTime @default(now())
-
-  doctor Doctor?
-  secretary Secretary?
-  appointmentsCreated Appointment[] @relation("CreatedBy")
-}
-
-enum Role {
-  SUPER_ADMIN
-  DOCTOR
-  SECRETARY
-}
-
-model Doctor {
-  id String @id @default(cuid())
-  userId String @unique
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cedula String @unique
-  especialidad String
-  whatsappNumber String @unique // Número de WhatsApp Business API
-  whatsappPhoneId String // Phone Number ID de Meta
-  accessToken String // Token de Meta para enviar mensajes
-  horarioInicio String @default("09:00")
-  horarioFin String @default("18:00")
-  duracionCita Int @default(30) // minutos
-
-  secretaries SecretaryDoctor[]
-  patients Patient[]
-  appointments Appointment[]
-}
-
-model Secretary {
-  id String @id @default(cuid())
-  userId String @unique
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  doctors SecretaryDoctor[]
-}
-
-model SecretaryDoctor {
-  id String @id @default(cuid())
-  secretaryId String
-  doctorId String
-
-  secretary Secretary @relation(fields: [secretaryId], references: [id], onDelete: Cascade)
-  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-
-  @@unique([secretaryId, doctorId])
-}
-
-model Patient {
-  id String @id @default(cuid())
-  doctorId String
-  doctor Doctor @relation(fields: [doctorId], references: [id])
-  name String
-  phone String // Número de WhatsApp del paciente
-  createdAt DateTime @default(now())
-
-  appointments Appointment[]
-
-  @@unique([doctorId, phone])
 }
 
 model Appointment {
@@ -89,15 +19,10 @@ model Appointment {
   fecha DateTime
   motivo String
   status AppointmentStatus @default(PENDIENTE)
-  origen String @default("MANUAL") // MANUAL o WHATSAPP
+  origen String @default("MANUAL")
+
+  reminder Reminder?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-enum AppointmentStatus {
-  PENDIENTE
-  CONFIRMADA
-  CANCELADA
-  COMPLETADA
 }
