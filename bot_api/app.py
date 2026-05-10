@@ -140,4 +140,39 @@ def landing_doctores():
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🔔</div>
-                        <h
+                        <h3>Recordatorios</h3>
+                        <p>Reduce inasistencias con confirmaciones automáticas por WhatsApp.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">📊</div>
+                        <h3>Expedientes Digitales</h3>
+                        <p>Registra consultas y mantén historial de pacientes en un solo lugar.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Datos Seguros</h3>
+                        <p>Cumplimiento con normativas de privacidad. Información encriptada.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Setup en 5 Minutos</h3>
+                        <p>Sin instalaciones. Conecta tu WhatsApp y empieza a recibir citas hoy.</p>
+                    </div>
+                </div>
+                <div class="cta">
+                    <h2>¿Listo para modernizar tu consultorio?</h2>
+                    <p>Únete a más de 200 médicos que ya automatizaron su agenda</p>
+                    <a href="https://wa.me/526531234567?text=Hola,%20quiero%20info%20de%20ConsultorioBot" class="btn">Solicitar Demo por WhatsApp</a>
+                </div>
+            </div>
+            <div class="footer">
+                © 2026 ConsultorioBot. Tecnología para profesionales de la salud.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "consultorio-bot"}
