@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-py"
+  interface = "asyncio"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+// Ejemplo para consultorio - borra y pon tus tablas
+model Doctor {
+  id Int @id @default(autoincrement())
+  nombre String
+  cedula String @unique
+}
+
+model Paciente {
+  id Int @id @default(autoincrement())
+  nombre String
+  telefono String?
+}
