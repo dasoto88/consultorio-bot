@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConsultorioBot Admin</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const API = window.location.origin;
+
+        function Login({ onLogin }) {
+            const [email, setEmail] = useState("admin@consultoriobot.com");
+            const [password, setPassword] = useState("admindasoto88");
+            const [loading, setLoading] = useState(false);
+            
+            const login = async () => {
+                setLoading(true);
+                const form = new FormData();
+                form.append("username", email);
+                form.append("password", password);
+                try {
+                    const res = await fetch(`${API}/token`, { method: "POST", body: form });
+                    const data = await res.json();
+                    if (data.access_token) {
+                        localStorage.setItem("token", data.access_token);
+                        localStorage.setItem("role", data.role);
+                        localStorage.setItem("name", email);
+                        onLogin(data.role);
+                    } else {
+                        alert("Email o password incorrecto");
+                    }
+                } catch (e) {
+                    alert("Error conectando al servidor");
+                }
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800">
+                    <div className="bg-white p-8 rounded-xl shadow-2xl w-96">
+                        <h1 className="text-3xl font-bold mb-2 text-center text-blue-600">ConsultorioBot</h1>
+                        <p className="text-center text-gray-500 mb-6">Panel de Administración</p>
+                        <input 
+                            className="w-full p-3 border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="Email" 
+                            value={email} 
+                            onChange={e => setEmail(e.target.value)} 
+                        />
+                        <input 
+                            className="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            type="password" 
+                            placeholder="Password" 
+                            value={password} 
+                            onChange={e => setPassword(e.target.value)}
+                            onKeyPress={e => e.key === 'Enter' && login()}
+                        />
+                        <button 
+                            onClick={login} 
+                            disabled={loading}
+                            className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400"
+                        >
+                            {loading ? "Entrando..." : "Entrar"}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function AdminPanel() {
+            const [doctors, setDoctors] = useState([]);
+            const [showForm, setShowForm] = useState(false);
+            const [form, setForm] = useState({
+                name:"", email:"", password:"", cedula:"", especialidad:"",
+                whatsappNumber:"", whatsappPhoneId:"", accessToken:"",
+                horarioInicio:"09:00", horarioFin:"18:00", duracionCita:30
+            });
+
+            const token = localStorage.getItem("token");
+            const headers = {"Authorization": `Bearer ${token}`, "Content-Type": "application/json"};
+
+            const loadDoctors = async () => {
+                const res = await fetch(`${API}/admin/doctors`, { headers });
+                if (res.ok) setDoctors(await res.json());
+            };
+
+            const createDoctor = async () => {
+                const res = await fetch(`${API}/admin/doctors`, { 
+                    method: "POST", 
+                    headers, 
+                    body: JSON.stringify({...form, duracionCita: parseInt(form.duracionCita)}) 
+                });
+                if (res.ok) {
+                    setShowForm(false);
+                    setForm({name:"",email:"",password:"",cedula:"",especialidad:"",whatsappNumber:"",whatsappPhoneId:"",accessToken:"",horarioInicio:"09:00",horarioFin:"18:00",duracionCita:30});
+                    loadDoctors();
+                    alert("Doctor creado exitosamente");
+                } else {
+                    alert("Error creando doctor");
+                }
+            };
+
+            useEffect(() => { loadDoctors(); }, []);
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-800">Panel Super Admin</h1>
+                            <p className="text-gray-500">Gestiona doctores y secretarias</p>
+                        </div>
+                        <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
+                            {showForm ? "Cancelar" : "+ Nuevo Doctor"}
+                        </button>
+                    </div>
+                    
+                    {showForm && (
+                        <div className="bg-white p-6 rounded-xl shadow-lg mb-6">
+                            <h2 className="text-xl font-bold mb-4 text-gray-800">Dar de Alta Doctor</h2>
+                            <div className="grid grid-cols-2 gap-4">
+                                <input className="p-3 border rounded-lg" placeholder="Nombre completo" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                                <input className="p-3 border rounded-lg" type="password" placeholder="Password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Cédula Profesional" value={form.cedula} onChange={e => setForm({...form, cedula: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Especialidad" value={form.especialidad} onChange={e => setForm({...form, especialidad: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="WhatsApp: 521234567890" value={form.whatsappNumber} onChange={e => setForm({...form, whatsappNumber: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Phone Number ID de Meta" value={form.whatsappPhoneId} onChange={e => setForm({...form, whatsappPhoneId: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Access Token de Meta" value={form.accessToken} onChange={e => setForm({...form, accessToken: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Horario Inicio: 09:00" value={form.horarioInicio} onChange={e => setForm({...form, horarioInicio: e.target.value})} />
+                                <input className="p-3 border rounded-lg" placeholder="Horario Fin: 18:00" value={form.horarioFin} onChange={e => setForm({...form, horarioFin: e.target.value})} />
+                                <input className="p-3 border rounded-lg" type="number" placeholder="Duración cita (min)" value={form.duracionCita} onChange={e => setForm({...form, duracionCita: e.target.value})} />
+                            </div>
+                            <button onClick={createDoctor} className="mt-4 bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700">Guardar Doctor</button>
+                        </div>
+                    )}
+
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4 text-left font-semibold text-gray-700">Doctor</th>
+                                    <th className="p-4 text-left font-semibold text-gray-700">Email</th>
+                                    <th className="p-4 text-left font-semibold text-gray-700">Cédula</th>
+                                    <th className="p-4 text-left font-semibold text-gray-700">Especialidad</th>
+                                    <th className="p-4 text-left font-semibold text-gray-700">WhatsApp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {doctors.length === 0 ? (
+                                    <tr><td colSpan="5" className="p-8 text-center text-gray-500">No hay doctores registrados</td></tr>
+                                ) : doctors.map(d => (
+                                    <tr key={d.id} className="border-b hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{d.user.name}</td>
+                                        <td className="p-4 text-gray-600">{d.user.email}</td>
+                                        <td className="p-4 text-gray-600">{d.cedula}</td>
+                                        <td className="p-4 text-gray-600">{d.especialidad}</td>
+                                        <td className="p-4 text-gray-600">{d.whatsappNumber}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        function DoctorPanel() {
+            const [appts, setAppts] = useState([]);
+            const token = localStorage.getItem("token");
+            const headers = {"Authorization": `Bearer ${token}`};
+
+            useEffect(() => {
+                fetch(`${API}/api/appointments`, { headers })
+                    .then(r => r.json())
+                    .then(setAppts);
+            }, []);
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto">
+                    <h1 className="text-3xl font-bold mb-2 text-gray-800">Mi Agenda</h1>
+                    <p className="text-gray-500 mb-6">Citas programadas</p>
+                    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4 text-left font-semibold">Paciente</th>
+                                    <th className="p-4 text-left font-semibold">Teléfono</th>
+                                    <th className="p-4 text-left font-semibold">Fecha y Hora</th>
+                                    <th className="p-4 text-left font-semibold">Motivo</th>
+                                    <th className="p-4 text-left font-semibold">Status</th>
+                                    <th className="p-4 text-left font-semibold">Origen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {appts.length === 0 ? (
+                                    <tr><td colSpan="6" className="p-8 text-center text-gray-500">No hay citas programadas</td></tr>
+                                ) : appts.map(a => (
+                                    <tr key={a.id} className="border-b hover:bg-gray-50">
+                                        <td className="p-4 font-medium">{a.patient.name}</td>
+                                        <td className="p-4 text-gray-600">{a.patient.phone}</td>
+                                        <td className="p-4 text-gray-600">{new Date(a.fecha).toLocaleString('es-MX')}</td>
+                                        <td className="p-4 text-gray-600">{a.motivo}</td>
+                                        <td className="p-4">
+                                            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                                a.status === 'CONFIRMADA' ? 'bg-green-100 text-green-800' : 
+                                                a.status === 'PENDIENTE' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-red-100 text-red-800'
+                                            }`}>
+                                                {a.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-gray-600">{a.origen}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [role, setRole] = useState(localStorage.getItem("role"));
+            const [name, setName] = useState(localStorage.getItem("name"));
+            
+            if (!role) return <Login onLogin={setRole} />;
+            
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <nav className="bg-blue-600 text-white p-4 shadow-lg">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                            <span className="font-bold text-2xl">ConsultorioBot</span>
+                            <div className="flex items-center gap-4">
+                                <span className="text-blue-100">{name}</span>
+                                <button 
+                                    onClick={() => {localStorage.clear(); setRole(null);}} 
+                                    className="bg-blue-700 px-4 py-2 rounded-lg hover:bg-blue-800 font-semibold"
+                                >
+                                    Salir
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+                    {role === "SUPER_ADMIN" ? <AdminPanel /> : <DoctorPanel />}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById("root"));
+    </script>
+</body>
+</html>
