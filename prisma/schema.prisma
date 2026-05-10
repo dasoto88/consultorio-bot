@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-py"
+  interface = "asyncio"
 }
 
 datasource db {
@@ -7,38 +8,15 @@ datasource db {
   url = env("DATABASE_URL")
 }
 
+// Ejemplo para consultorio - borra y pon tus tablas
 model Doctor {
-  id String @id @default(cuid())
-  nombreConsul String
-  nombreDoctor String
-  whatsapp String @unique
-  whatsappPhoneId String @unique
-  usuario String @unique
-  password String
-  createdAt DateTime @default(now())
-  pacientes Paciente[]
-  citas Cita[]
+  id Int @id @default(autoincrement())
+  nombre String
+  cedula String @unique
 }
 
 model Paciente {
-  id String @id @default(cuid())
+  id Int @id @default(autoincrement())
   nombre String
-  telefono String
-  doctorId String
-  doctor Doctor @relation(fields: [doctorId], references: [id])
-  citas Cita[]
-  createdAt DateTime @default(now())
-
-  @@unique([telefono, doctorId])
-}
-
-model Cita {
-  id String @id @default(cuid())
-  fecha DateTime
-  motivo String
-  doctorId String
-  doctor Doctor @relation(fields: [doctorId], references: [id])
-  pacienteId String
-  paciente Paciente @relation(fields: [pacienteId], references: [id])
-  createdAt DateTime @default(now())
+  telefono String?
 }
