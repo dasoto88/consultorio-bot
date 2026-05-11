@@ -10,9 +10,84 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 
-st.set_page_config(page_title="ConsultorioBot", page_icon="⚕️", layout="wide")
+st.set_page_config(page_title="ConsultorioBot Pro", page_icon="⚕️", layout="wide", initial_sidebar_state="expanded")
 
-# ===== BASE DE DATOS =====
+# ===== CSS PREMIUM =====
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+    
+    html, body, [class*="css"] {font-family: 'Poppins', sans-serif;}
+    
+   .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    
+   .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-left: 4px solid #667eea;
+        transition: transform 0.3s;
+    }
+   .metric-card:hover {transform: translateY(-5px);}
+    
+   .cita-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #667eea;
+    }
+    
+   .stButton>button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 0.5rem 2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+   .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+   .banner {
+        background: url('https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=1200&q=80');
+        background-size: cover;
+        background-position: center;
+        height: 200px;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        position: relative;
+    }
+   .banner-overlay {
+        background: rgba(102, 126, 234, 0.85);
+        height: 100%;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 2.5rem;
+        font-weight: 700;
+    }
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+# ===== DB =====
 def init_db():
     conn = sqlite3.connect('consultorio.db')
     c = conn.cursor()
@@ -27,19 +102,15 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, doctor_id INTEGER, secretaria_id INTEGER, paciente_nombre TEXT, 
                   paciente_telefono TEXT, fecha TEXT, hora TEXT, motivo TEXT, estatus TEXT, origen TEXT, fecha_creacion TEXT)''')
     
-    # Super Admin
-    c.execute("SELECT * FROM doctores WHERE email='admin@consultoriobot.com'")
+    c.execute("SELECT * FROM doctores WHERE email='dasoto88122911@gmail.com'")
     if not c.fetchone():
-        c.execute("INSERT INTO doctores (id, nombre, email, licencia, password_hash, telefono, especialidad, activo, fecha_registro) VALUES (0, 'Super Admin', 'admin@consultoriobot.com', 'ADMIN-MASTER',?, '', 'Admin', 1,?)", 
+        c.execute("INSERT INTO doctores (id, nombre, email, licencia, password_hash, telefono, especialidad, activo, fecha_registro) VALUES (0, 'Super Admin', 'dasoto88122911@gmail.com', 'ADMIN-MASTER',?, '', 'Admin', 1,?)", 
                   (hash_password('admindasoto88'), str(datetime.now())))
     conn.commit()
     conn.close()
 
-def hash_password(pwd):
-    return hashlib.sha256(pwd.encode()).hexdigest()
-
-def generar_licencia():
-    return f"DOC-{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}-{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}"
+def hash_password(pwd): return hashlib.sha256(pwd.encode()).hexdigest()
+def generar_licencia(): return f"DOC-{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}-{''.join(random.choices(string.ascii_uppercase + string.digits, k=4))}"
 
 def query_db(query, params=()):
     conn = sqlite3.connect('consultorio.db')
@@ -58,333 +129,239 @@ def exec_db(query, params=()):
 
 init_db()
 
-# ===== PDF REPORTES =====
-def generar_pdf_reporte(df_citas, titulo):
+# ===== PDF =====
+def generar_pdf(df_citas, titulo):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-    
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(1*inch, height - 1*inch, f"Reporte: {titulo}")
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(1*inch, height - 1*inch, f"ConsultorioBot Pro - {titulo}")
     c.setFont("Helvetica", 10)
     c.drawString(1*inch, height - 1.3*inch, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    
     y = height - 1.8*inch
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(1*inch, y, "Fecha")
-    c.drawString(2*inch, y, "Hora")
-    c.drawString(2.8*inch, y, "Paciente")
-    c.drawString(4.5*inch, y, "Telefono")
-    c.drawString(5.8*inch, y, "Estatus")
+    for col, x in zip(['Fecha','Hora','Paciente','Telefono','Estatus'], [1,2,2.8,4.5,5.8]): c.drawString(x*inch, y, col)
     y -= 0.2*inch
-    
     c.setFont("Helvetica", 8)
     for _, row in df_citas.iterrows():
-        if y < 1*inch:
-            c.showPage()
-            y = height - 1*inch
+        if y < 1*inch: c.showPage(); y = height - 1*inch
         c.drawString(1*inch, y, str(row['fecha']))
         c.drawString(2*inch, y, str(row['hora']))
         c.drawString(2.8*inch, y, str(row['paciente_nombre'])[:25])
         c.drawString(4.5*inch, y, str(row['paciente_telefono']))
         c.drawString(5.8*inch, y, str(row['estatus']))
         y -= 0.18*inch
-    
     c.save()
     buffer.seek(0)
     return buffer
 
 # ===== LOGIN =====
 def login():
-    st.title("⚕️ ConsultorioBot")
-    st.caption("Sistema de gestión para consultorios médicos")
-    email = st.text_input("Email")
-    clave = st.text_input("Licencia o Contraseña", type="password")
-    
-    if st.button("Entrar", type="primary", use_container_width=True):
-        pwd_hash = hash_password(clave)
-        df = query_db("SELECT * FROM doctores WHERE email=? AND (licencia=? OR password_hash=?) AND activo=1", (email, clave, pwd_hash))
-        if not df.empty:
-            st.session_state['user'] = {'rol': 'admin' if df.iloc[0]['id']==0 else 'doctor', 'nombre': df.iloc[0]['nombre'], 'id': df.iloc[0]['id'], 'email': df.iloc[0]['email']}
-            st.rerun()
+    st.markdown('<div class="banner"><div class="banner-overlay">⚕️ ConsultorioBot Pro</div></div>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.markdown('<div class="main-header"><h2 style="text-align:center;margin:0;">Sistema de Gestión Médica</h2><p style="text-align:center;margin:0;">Tecnología de última generación para tu consultorio</p></div>', unsafe_allow_html=True)
+        email = st.text_input("📧 Email", placeholder="doctor@consultorio.com")
+        clave = st.text_input("🔐 Licencia o Contraseña", type="password", placeholder="DOC-XXXX-XXXX")
         
-        df_sec = query_db("SELECT * FROM secretarias WHERE email=? AND password_hash=? AND activo=1", (email, pwd_hash))
-        if not df_sec.empty:
-            st.session_state['user'] = {'rol': 'secretaria', 'nombre': df_sec.iloc[0]['nombre'], 'id': df_sec.iloc[0]['id'], 'email': df_sec.iloc[0]['email']}
-            st.rerun()
-            
-        st.error("Email o Licencia/Contraseña incorrectos")
+        if st.button("Entrar al Sistema", type="primary", use_container_width=True):
+            pwd_hash = hash_password(clave)
+            df = query_db("SELECT * FROM doctores WHERE email=? AND (licencia=? OR password_hash=?) AND activo=1", (email, clave, pwd_hash))
+            if not df.empty:
+                st.session_state['user'] = {'rol': 'admin' if df.iloc[0]['id']==0 else 'doctor', 'nombre': df.iloc[0]['nombre'], 'id': df.iloc[0]['id'], 'email': df.iloc[0]['email']}
+                st.rerun()
+            df_sec = query_db("SELECT * FROM secretarias WHERE email=? AND password_hash=? AND activo=1", (email, pwd_hash))
+            if not df_sec.empty:
+                st.session_state['user'] = {'rol': 'secretaria', 'nombre': df_sec.iloc[0]['nombre'], 'id': df_sec.iloc[0]['id'], 'email': df_sec.iloc[0]['email']}
+                st.rerun()
+            st.error("❌ Credenciales incorrectas")
 
-# ===== GESTIÓN DE CITAS =====
-def mostrar_agenda(doctor_id, es_admin=False):
-    st.subheader("📅 Agenda de Citas")
-    
-    col1, col2, col3 = st.columns(3)
+# ===== COMPONENTES =====
+def mostrar_agenda(doctor_id):
+    col1, col2, col3, col4 = st.columns(4)
     fecha_inicio = col1.date_input("Desde", datetime.now() - timedelta(days=7))
     fecha_fin = col2.date_input("Hasta", datetime.now() + timedelta(days=30))
-    estatus_filtro = col3.selectbox("Estatus", ["Todos", "Agendada", "Completada", "Cancelada"])
+    estatus_filtro = col3.selectbox("Filtrar", ["Todos", "Agendada", "Completada", "Cancelada"])
     
-    query = "SELECT c.*, s.nombre as secretaria_nombre FROM citas c LEFT JOIN secretarias s ON c.secretaria_id=s.id WHERE c.doctor_id=? AND c.fecha BETWEEN? AND?"
+    query = "SELECT c.*, s.nombre as secretaria FROM citas c LEFT JOIN secretarias s ON c.secretaria_id=s.id WHERE c.doctor_id=? AND c.fecha BETWEEN? AND?"
     params = [doctor_id, str(fecha_inicio), str(fecha_fin)]
-    if estatus_filtro!= "Todos":
-        query += " AND c.estatus=?"
-        params.append(estatus_filtro)
-    query += " ORDER BY c.fecha DESC, c.hora DESC"
+    if estatus_filtro!= "Todos": query += " AND c.estatus=?"; params.append(estatus_filtro)
+    df = query_db(query + " ORDER BY c.fecha DESC, c.hora DESC", params)
     
-    df = query_db(query, params)
+    if df.empty: st.info("📅 No hay citas en el rango seleccionado"); return df
     
-    if df.empty:
-        st.info("No hay citas en el rango seleccionado")
-        return df
-    
-    # Mostrar tabla con acciones
-    for idx, row in df.iterrows():
+    for _, row in df.iterrows():
         with st.container():
-            col1, col2, col3, col4, col5 = st.columns([2,2,3,2,2])
-            col1.write(f"**{row['fecha']} {row['hora']}**")
-            col2.write(row['paciente_nombre'])
-            col3.write(f"{row['motivo'][:30]}...")
-            col4.write(f"`{row['estatus']}`")
+            st.markdown(f'<div class="cita-card">', unsafe_allow_html=True)
+            c1, c2, c3, c4, c5 = st.columns([2,2,3,2,2])
+            c1.markdown(f"**📅 {row['fecha']}**<br>🕐 {row['hora']}", unsafe_allow_html=True)
+            c2.markdown(f"**👤 {row['paciente_nombre']}**<br>📱 {row['paciente_telefono']}", unsafe_allow_html=True)
+            c3.write(f"📝 {row['motivo'][:40]}...")
+            c4.markdown(f"**Estado:** `{row['estatus']}`<br>**Origen:** {row['origen']}", unsafe_allow_html=True)
             
-            with col5:
-                if st.button("Editar", key=f"edit_{row['id']}"):
-                    st.session_state['edit_cita'] = row['id']
-                if st.button("Borrar", key=f"del_{row['id']}"):
-                    st.session_state['del_cita'] = row['id']
+            with c5:
+                if st.button("✏️", key=f"edit_{row['id']}", help="Editar"): st.session_state['edit_cita'] = row['id']
+                if st.button("🗑️", key=f"del_{row['id']}", help="Borrar"): st.session_state['del_cita'] = row['id']
             
             if st.session_state.get('edit_cita') == row['id']:
-                with st.form(f"form_edit_{row['id']}"):
+                with st.form(f"form_edit_{row['id']}", clear_on_submit=True):
                     st.write("**Editar Cita**")
-                    nueva_fecha = st.date_input("Fecha", datetime.strptime(row['fecha'], '%Y-%m-%d'))
-                    nueva_hora = st.time_input("Hora", datetime.strptime(row['hora'], '%H:%M:%S').time())
-                    nuevo_motivo = st.text_area("Motivo", row['motivo'])
-                    nuevo_estatus = st.selectbox("Estatus", ["Agendada", "Completada", "Cancelada"], index=["Agendada", "Completada", "Cancelada"].index(row['estatus']))
-                    
-                    col_a, col_b = st.columns(2)
-                    if col_a.form_submit_button("Guardar Cambios"):
+                    nf = st.date_input("Fecha", datetime.strptime(row['fecha'], '%Y-%m-%d'))
+                    nh = st.time_input("Hora", datetime.strptime(row['hora'], '%H:%M:%S').time())
+                    nm = st.text_area("Motivo", row['motivo'])
+                    ne = st.selectbox("Estatus", ["Agendada", "Completada", "Cancelada"], index=["Agendada", "Completada", "Cancelada"].index(row['estatus']))
+                    if st.form_submit_button("💾 Guardar", type="primary"):
                         if st.session_state.get('confirm_edit')!= row['id']:
-                            st.session_state['confirm_edit'] = row['id']
-                            st.warning("¿Estás seguro de guardar los cambios?")
+                            st.session_state['confirm_edit'] = row['id']; st.warning("⚠️ ¿Confirmar cambios?")
                         else:
-                            exec_db("UPDATE citas SET fecha=?, hora=?, motivo=?, estatus=? WHERE id=?", 
-                                   (str(nueva_fecha), str(nueva_hora), nuevo_motivo, nuevo_estatus, row['id']))
-                            st.success("Cita actualizada")
-                            del st.session_state['edit_cita']
-                            del st.session_state['confirm_edit']
-                            st.rerun()
-                    if col_b.form_submit_button("Cancelar"):
-                        del st.session_state['edit_cita']
-                        st.rerun()
+                            exec_db("UPDATE citas SET fecha=?, hora=?, motivo=?, estatus=? WHERE id=?", (str(nf), str(nh), nm, ne, row['id']))
+                            st.success("✅ Actualizada"); del st.session_state['edit_cita']; del st.session_state['confirm_edit']; st.rerun()
             
             if st.session_state.get('del_cita') == row['id']:
-                st.error(f"¿Seguro que quieres BORRAR la cita de {row['paciente_nombre']} del {row['fecha']}?")
-                col_a, col_b = st.columns(2)
-                if col_a.button("Sí, Borrar", key=f"conf_del_{row['id']}", type="primary"):
-                    exec_db("DELETE FROM citas WHERE id=?", (row['id'],))
-                    st.success("Cita eliminada")
-                    del st.session_state['del_cita']
-                    st.rerun()
-                if col_b.button("No", key=f"cancel_del_{row['id']}"):
-                    del st.session_state['del_cita']
-                    st.rerun()
-            st.divider()
-    
+                st.error(f"⚠️ ¿Borrar cita de {row['paciente_nombre']} del {row['fecha']}?")
+                ca, cb = st.columns(2)
+                if ca.button("Sí, Borrar", key=f"conf_del_{row['id']}", type="primary"):
+                    exec_db("DELETE FROM citas WHERE id=?", (row['id'],)); st.success("✅ Eliminada"); del st.session_state['del_cita']; st.rerun()
+                if cb.button("Cancelar"): del st.session_state['del_cita']; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
     return df
 
-def form_nueva_cita(doctor_id, secretaria_id=None):
+def form_cita(doctor_id, secretaria_id=None):
     with st.form("nueva_cita", clear_on_submit=True):
-        st.subheader("➕ Agendar Nueva Cita")
-        col1, col2 = st.columns(2)
-        paciente = col1.text_input("Nombre paciente*")
-        telefono = col2.text_input("WhatsApp paciente*", placeholder="521633...")
+        st.subheader("➕ Nueva Cita")
+        c1, c2 = st.columns(2)
+        paciente = c1.text_input("Nombre paciente*", placeholder="Juan Pérez")
+        telefono = c2.text_input("WhatsApp*", placeholder="5216331234567")
         fecha = st.date_input("Fecha*")
         hora = st.time_input("Hora*")
-        motivo = st.text_area("Motivo de consulta")
-        
-        if st.form_submit_button("Agendar Cita", type="primary"):
+        motivo = st.text_area("Motivo", placeholder="Consulta general, revisión...")
+        if st.form_submit_button("📅 Agendar Cita", type="primary", use_container_width=True):
             if paciente and telefono:
                 exec_db("INSERT INTO citas (doctor_id, secretaria_id, paciente_nombre, paciente_telefono, fecha, hora, motivo, estatus, origen, fecha_creacion) VALUES (?,?,?,?,?,?,?,?,?,?)",
                        (doctor_id, secretaria_id, paciente, telefono, str(fecha), str(hora), motivo, 'Agendada', 'Manual', str(datetime.now())))
-                st.success(f"Cita agendada para {paciente}")
-                st.rerun()
-            else:
-                st.error("Nombre y teléfono son obligatorios")
+                st.success(f"✅ Cita agendada para {paciente}"); st.balloons()
+            else: st.error("❌ Nombre y teléfono obligatorios")
 
-# ===== REPORTES =====
 def mostrar_reportes(doctor_id):
-    st.subheader("📊 Reportes")
-    col1, col2 = st.columns(2)
-    tipo = col1.selectbox("Periodo", ["Esta Semana", "Este Mes", "Este Año", "Personalizado"])
-    
-    if tipo == "Esta Semana":
-        inicio = datetime.now() - timedelta(days=datetime.now().weekday())
-        fin = inicio + timedelta(days=6)
-    elif tipo == "Este Mes":
-        inicio = datetime.now().replace(day=1)
-        fin = (inicio + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    elif tipo == "Este Año":
-        inicio = datetime.now().replace(month=1, day=1)
-        fin = datetime.now().replace(month=12, day=31)
-    else:
-        inicio = col1.date_input("Desde", datetime.now() - timedelta(days=30))
-        fin = col2.date_input("Hasta", datetime.now())
+    c1, c2 = st.columns(2)
+    tipo = c1.selectbox("📊 Periodo", ["Esta Semana", "Este Mes", "Este Año", "Personalizado"])
+    if tipo == "Esta Semana": inicio = datetime.now() - timedelta(days=datetime.now().weekday()); fin = inicio + timedelta(days=6)
+    elif tipo == "Este Mes": inicio = datetime.now().replace(day=1); fin = (inicio + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    elif tipo == "Este Año": inicio = datetime.now().replace(month=1, day=1); fin = datetime.now().replace(month=12, day=31)
+    else: inicio = c1.date_input("Desde", datetime.now() - timedelta(days=30)); fin = c2.date_input("Hasta", datetime.now())
     
     df = query_db("SELECT * FROM citas WHERE doctor_id=? AND fecha BETWEEN? AND? ORDER BY fecha, hora", 
                  (doctor_id, str(inicio.date() if isinstance(inicio, datetime) else inicio), str(fin.date() if isinstance(fin, datetime) else fin)))
     
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Citas", len(df))
-    col2.metric("Agendadas", len(df[df['estatus']=='Agendada']))
-    col3.metric("Completadas", len(df[df['estatus']=='Completada']))
-    col4.metric("Canceladas", len(df[df['estatus']=='Cancelada']))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.markdown(f'<div class="metric-card"><h3>{len(df)}</h3><p>Total Citas</p></div>', unsafe_allow_html=True)
+    m2.markdown(f'<div class="metric-card"><h3>{len(df[df["estatus"]=="Agendada"])}</h3><p>Agendadas</p></div>', unsafe_allow_html=True)
+    m3.markdown(f'<div class="metric-card"><h3>{len(df[df["estatus"]=="Completada"])}</h3><p>Completadas</p></div>', unsafe_allow_html=True)
+    m4.markdown(f'<div class="metric-card"><h3>{len(df[df["estatus"]=="Cancelada"])}</h3><p>Canceladas</p></div>', unsafe_allow_html=True)
     
-    st.dataframe(df[['fecha','hora','paciente_nombre','motivo','estatus']], use_container_width=True)
-    
+    st.dataframe(df[['fecha','hora','paciente_nombre','motivo','estatus','origen']], use_container_width=True)
     if not df.empty:
-        pdf = generar_pdf_reporte(df, f"{inicio} a {fin}")
-        st.download_button("📥 Descargar PDF", pdf, f"reporte_{inicio}_{fin}.pdf", "application/pdf")
+        pdf = generar_pdf(df, f"{inicio} a {fin}")
+        st.download_button("📥 Descargar PDF", pdf, f"reporte_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf", use_container_width=True)
 
-# ===== PANEL DOCTOR =====
+# ===== PANELES =====
 def panel_doctor():
     doctor_id = st.session_state['user']['id']
-    st.title(f"👨‍⚕️ Dr. {st.session_state['user']['nombre']}")
+    st.markdown(f'<div class="main-header"><h1>👨‍⚕️ Dr. {st.session_state["user"]["nombre"]}</h1><p>Panel de Control Médico</p></div>', unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Agenda", "Nueva Cita", "Secretarias", "Reportes"])
-    
-    with tab1:
-        mostrar_agenda(doctor_id)
-    with tab2:
-        form_nueva_cita(doctor_id)
+    tab1, tab2, tab3, tab4 = st.tabs(["📅 Agenda", "➕ Nueva Cita", "👥 Secretarias", "📊 Reportes"])
+    with tab1: mostrar_agenda(doctor_id)
+    with tab2: form_cita(doctor_id)
     with tab3:
         st.subheader("👥 Mis Secretarias")
         df_secs = query_db("SELECT s.* FROM secretarias s JOIN doctor_secretaria ds ON s.id=ds.secretaria_id WHERE ds.doctor_id=?", (doctor_id,))
-        st.dataframe(df_secs[['nombre','email','activo']], use_container_width=True)
+        if not df_secs.empty:
+            for _, sec in df_secs.iterrows():
+                c1, c2 = st.columns([4,1])
+                c1.markdown(f'<div class="cita-card"><b>{sec["nombre"]}</b><br>{sec["email"]}</div>', unsafe_allow_html=True)
+                if c2.button("Quitar", key=f"quit_{sec['id']}"): exec_db("DELETE FROM doctor_secretaria WHERE doctor_id=? AND secretaria_id=?", (doctor_id, sec['id'])); st.rerun()
         
         with st.expander("➕ Agregar Secretaria"):
-            col1, col2 = st.columns(2)
-            with col1:
+            c1, c2 = st.columns(2)
+            with c1:
                 st.write("**Crear Nueva**")
-                with st.form("nueva_sec"):
+                with st.form("nueva_sec", clear_on_submit=True):
                     nombre = st.text_input("Nombre")
                     email = st.text_input("Email")
                     password = st.text_input("Password", type="password")
-                    if st.form_submit_button("Crear y Asignar"):
+                    if st.form_submit_button("Crear", type="primary"):
                         try:
-                            sec_id = exec_db("INSERT INTO secretarias (nombre, email, password_hash, activo) VALUES (?,?,?,1)",
-                                           (nombre, email, hash_password(password)))
+                            sec_id = exec_db("INSERT INTO secretarias (nombre, email, password_hash, activo) VALUES (?,?,?,1)", (nombre, email, hash_password(password)))
                             exec_db("INSERT INTO doctor_secretaria VALUES (?,?)", (doctor_id, sec_id))
-                            st.success(f"Secretaria {nombre} creada y asignada")
-                            st.rerun()
-                        except:
-                            st.error("Ese email ya existe")
-            with col2:
+                            st.success(f"✅ {nombre} agregada")
+                        except: st.error("❌ Email ya existe")
+            with c2:
                 st.write("**Asignar Existente**")
                 df_todas = query_db("SELECT * FROM secretarias WHERE id NOT IN (SELECT secretaria_id FROM doctor_secretaria WHERE doctor_id=?)", (doctor_id,))
                 if not df_todas.empty:
-                    sec_sel = st.selectbox("Selecciona secretaria", df_todas['nombre'].tolist())
-                    if st.button("Asignar a mi consultorio"):
+                    sec_sel = st.selectbox("Selecciona", df_todas['nombre'].tolist())
+                    if st.button("Asignar", type="primary", use_container_width=True):
                         sec_id = df_todas[df_todas['nombre']==sec_sel].iloc[0]['id']
                         exec_db("INSERT INTO doctor_secretaria VALUES (?,?)", (doctor_id, sec_id))
-                        st.success(f"{sec_sel} asignada")
-                        st.rerun()
-                else:
-                    st.info("No hay secretarias disponibles")
-    
-    with tab3:
-        df_secs = query_db("SELECT s.* FROM secretarias s JOIN doctor_secretaria ds ON s.id=ds.secretaria_id WHERE ds.doctor_id=?", (doctor_id,))
-        for _, sec in df_secs.iterrows():
-            col1, col2 = st.columns([4,1])
-            col1.write(f"**{sec['nombre']}** - {sec['email']}")
-            if col2.button("Quitar", key=f"quit_{sec['id']}"):
-                exec_db("DELETE FROM doctor_secretaria WHERE doctor_id=? AND secretaria_id=?", (doctor_id, sec['id']))
-                st.rerun()
-    
-    with tab4:
-        mostrar_reportes(doctor_id)
+                        st.success(f"✅ {sec_sel} asignada"); st.rerun()
+                else: st.info("No hay secretarias disponibles")
+    with tab4: mostrar_reportes(doctor_id)
 
-# ===== PANEL SECRETARIA =====
 def panel_secretaria():
     sec_id = st.session_state['user']['id']
-    # Buscar doctores asignados
     df_docs = query_db("SELECT d.* FROM doctores d JOIN doctor_secretaria ds ON d.id=ds.doctor_id WHERE ds.secretaria_id=?", (sec_id,))
-    
-    if df_docs.empty:
-        st.error("No estás asignada a ningún doctor. Pide al doctor que te agregue.")
-        return
-    
-    doc_sel = st.selectbox("Seleccionar Doctor", df_docs['nombre'].tolist())
+    if df_docs.empty: st.error("No estás asignada a ningún doctor"); return
+    doc_sel = st.selectbox("👨‍⚕️ Consultorio", df_docs['nombre'].tolist())
     doctor_id = df_docs[df_docs['nombre']==doc_sel].iloc[0]['id']
-    
-    st.title(f"📋 Secretaria: {st.session_state['user']['nombre']}")
-    st.caption(f"Consultorio: Dr. {doc_sel}")
-    
-    tab1, tab2 = st.tabs(["Agenda", "Nueva Cita"])
-    with tab1:
-        mostrar_agenda(doctor_id)
-    with tab2:
-        form_nueva_cita(doctor_id, sec_id)
+    st.markdown(f'<div class="main-header"><h1>📋 {st.session_state["user"]["nombre"]}</h1><p>Consultorio: Dr. {doc_sel}</p></div>', unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["📅 Agenda", "➕ Nueva Cita"])
+    with tab1: mostrar_agenda(doctor_id)
+    with tab2: form_cita(doctor_id, sec_id)
 
-# ===== PANEL SUPER ADMIN =====
 def panel_admin():
-    st.title("🔐 Panel Super Admin")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["Doctores", "Nuevo Doctor", "Agendas", "Reportes Globales"])
+    st.markdown('<div class="main-header"><h1>🔐 Super Admin - ConsultorioBot Pro</h1><p>Control Total del Sistema</p></div>', unsafe_allow_html=True)
+    tab1, tab2, tab3, tab4 = st.tabs(["👨‍⚕️ Doctores", "➕ Nuevo Doctor", "📅 Agendas", "📊 Reportes"])
     
     with tab1:
-        st.subheader("Doctores Registrados")
         df = query_db("SELECT id, nombre, email, licencia, telefono, especialidad, activo FROM doctores WHERE id!=0")
         st.dataframe(df, use_container_width=True)
-        
-        st.subheader("Secretarias por Doctor")
         for _, doc in df.iterrows():
-            with st.expander(f"Dr. {doc['nombre']}"):
+            with st.expander(f"👨‍⚕️ Dr. {doc['nombre']} - {doc['email']}"):
                 df_secs = query_db("SELECT s.nombre, s.email FROM secretarias s JOIN doctor_secretaria ds ON s.id=ds.secretaria_id WHERE ds.doctor_id=?", (doc['id'],))
-                st.dataframe(df_secs, use_container_width=True)
+                st.write("**Secretarias:**"); st.dataframe(df_secs, use_container_width=True)
     
     with tab2:
-        with st.form("nuevo_doc"):
-            nombre = st.text_input("Nombre completo del Doctor*")
-            email = st.text_input("Email*")
-            telefono = st.text_input("WhatsApp", placeholder="5216331124596")
-            especialidad = st.text_input("Especialidad")
-            if st.form_submit_button("Generar Licencia y Crear Doctor", type="primary"):
+        with st.form("nuevo_doc", clear_on_submit=True):
+            st.subheader("Crear Nuevo Doctor")
+            c1, c2 = st.columns(2)
+            nombre = c1.text_input("Nombre completo*")
+            email = c2.text_input("Email*")
+            telefono = c1.text_input("WhatsApp", placeholder="5216331234567")
+            especialidad = c2.text_input("Especialidad", placeholder="Cardiología")
+            if st.form_submit_button("🎫 Generar Licencia", type="primary", use_container_width=True):
                 licencia = generar_licencia()
                 try:
                     exec_db("INSERT INTO doctores (nombre, email, licencia, password_hash, telefono, especialidad, activo, fecha_registro) VALUES (?,?,?,?,?,?,1,?)",
                            (nombre, email, licencia, '', telefono, especialidad, str(datetime.now())))
-                    st.success(f"Doctor {nombre} creado")
-                    st.code(f"Email: {email}\nLicencia: {licencia}", language=None)
-                    st.info("El doctor puede entrar con estos datos. Puede cambiar la licencia por contraseña después.")
-                except:
-                    st.error("Ese email ya existe")
+                    st.success(f"✅ Doctor creado"); st.code(f"Email: {email}\nLicencia: {licencia}"); st.balloons()
+                except: st.error("❌ Email ya existe")
     
     with tab3:
-        st.subheader("Ver Agenda de Doctor")
         df_docs = query_db("SELECT id, nombre FROM doctores WHERE id!=0")
         if not df_docs.empty:
             doc_sel = st.selectbox("Selecciona Doctor", df_docs['nombre'].tolist(), key="admin_doc")
             doctor_id = df_docs[df_docs['nombre']==doc_sel].iloc[0]['id']
-            
-            col1, col2 = st.columns([3,1])
-            with col1:
-                st.write(f"**Gestionando agenda de: Dr. {doc_sel}**")
-            with col2:
-                if st.button("➕ Agendar por Doctor"):
-                    st.session_state['admin_agendar'] = doctor_id
-            
+            st.info(f"Gestionando: Dr. {doc_sel}")
+            if st.button("➕ Agendar como Admin"): st.session_state['admin_agendar'] = doctor_id
             if st.session_state.get('admin_agendar') == doctor_id:
-                form_nueva_cita(doctor_id)
-                if st.button("Cerrar Formulario"):
-                    del st.session_state['admin_agendar']
-                    st.rerun()
-            
-            mostrar_agenda(doctor_id, es_admin=True)
+                form_cita(doctor_id)
+                if st.button("Cerrar"): del st.session_state['admin_agendar']; st.rerun()
+            mostrar_agenda(doctor_id)
     
     with tab4:
-        st.subheader("Reportes de Doctor")
         df_docs = query_db("SELECT id, nombre FROM doctores WHERE id!=0")
         if not df_docs.empty:
-            doc_sel = st.selectbox("Selecciona Doctor", df_docs['nombre'].tolist(), key="admin_rep")
+            doc_sel = st.selectbox("Doctor", df_docs['nombre'].tolist(), key="admin_rep")
             doctor_id = df_docs[df_docs['nombre']==doc_sel].iloc[0]['id']
             mostrar_reportes(doctor_id)
 
@@ -392,11 +369,16 @@ def panel_admin():
 if 'user' not in st.session_state:
     login()
 else:
-    st.sidebar.write(f"**{st.session_state['user']['nombre']}**")
-    st.sidebar.caption(st.session_state['user']['email'])
-    if st.sidebar.button("Cerrar Sesión", use_container_width=True):
-        del st.session_state['user']
-        st.rerun()
+    with st.sidebar:
+        st.image("https://img.icons8.com/fluency/96/stethoscope.png", width=80)
+        st.markdown(f"### {st.session_state['user']['nombre']}")
+        st.caption(st.session_state['user']['email'])
+        st.divider()
+        if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            del st.session_state['user']; st.rerun()
+        st.markdown("---")
+        st.caption("**ConsultorioBot Pro v2.0**")
+        st.caption("Tecnología médica de élite")
     
     rol = st.session_state['user']['rol']
     if rol == 'admin': panel_admin()
