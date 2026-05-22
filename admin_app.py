@@ -20,6 +20,15 @@ st.set_page_config(page_title="MedPanel Pro", layout="wide", page_icon="🏥",
 # ================= AUTO MIGRACIÓN DB =================
 @st.cache_resource
 def _migrar_db():
+    # Generate prisma client first (no DATABASE_URL needed)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "prisma", "generate"],
+            capture_output=True, text=True, timeout=60
+        )
+    except Exception:
+        pass
+    # Push schema to DB (needs DATABASE_URL)
     try:
         result = subprocess.run(
             [sys.executable, "-m", "prisma", "db", "push", "--accept-data-loss"],
@@ -131,16 +140,20 @@ CONSULTA_PRECIO = float(_secret("CONSULTA_PRECIO", "500"))
 @st.cache_resource
 def init_db():
     from prisma import Prisma
-    db = Prisma()
-    asyncio.run(db.connect())
-    return db
+    client = Prisma()
+    asyncio.run(client.connect())
+    return client
 
 def run(coro):
     return asyncio.run(coro)
 
+db = None
+DB_OK = False
+DB_ERR = "Base de datos no inicializada"
 try:
     db = init_db()
     DB_OK = True
+    DB_ERR = ""
 except Exception as e:
     DB_OK = False
     DB_ERR = str(e)
