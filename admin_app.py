@@ -283,14 +283,15 @@ c5.markdown(f'<div class="kpi-green"><div class="kpi-val">${ingresos_mes:,.0f}</
 st.markdown("<br>", unsafe_allow_html=True)
 
 # Tabs
-tab_agenda, tab_pacientes, tab_consultas, tab_recetas, tab_cobros, tab_inventario, tab_stats = st.tabs([
+tab_agenda, tab_pacientes, tab_consultas, tab_recetas, tab_cobros, tab_inventario, tab_stats, tab_webs = st.tabs([
     "📅 Agenda",
     "👥 Pacientes",
     "🩺 Consultas",
     "💊 Recetas",
     "💰 Cobros",
     "📦 Inventario",
-    "📊 Estadísticas"
+    "📊 Estadísticas",
+    "🌐 Webs Sugeridas"
 ])
 
 # ─────────────────────────────────────────────────
@@ -1014,3 +1015,108 @@ with tab_stats:
             ]
         }
         st.dataframe(pd.DataFrame(resumen), use_container_width=True, hide_index=True)
+
+# ─────────────────────────────────────────────────
+# TAB 8: WEBS SUGERIDAS
+# ─────────────────────────────────────────────────
+with tab_webs:
+    st.subheader("🌐 Webs Sugeridas para Médicos")
+    st.caption("Recursos útiles en línea para la práctica médica y gestión del consultorio.")
+
+    WEBS_FIJAS = [
+        {
+            "nombre": "MedPanel Pro",
+            "url": "https://consultorio-bot-9j3t.onrender.com/",
+            "desc": "Tu sistema de gestión médica actual. Agendas, expedientes, recetas y estadísticas.",
+            "emoji": "🏥"
+        },
+        {
+            "nombre": "CIE-10 en Línea",
+            "url": "https://cie10.com.mx/",
+            "desc": "Clasificación Internacional de Enfermedades. Busca códigos de diagnóstico rápidamente.",
+            "emoji": "📋"
+        },
+        {
+            "nombre": "Vademécum Farmacológico",
+            "url": "https://www.vademecum.es/",
+            "desc": "Base de datos de medicamentos, presentaciones, dosis e interacciones farmacológicas.",
+            "emoji": "💊"
+        },
+        {
+            "nombre": "IMSS - Catálogo de Medicamentos",
+            "url": "https://www.imss.gob.mx/salud-en-linea/catalogo-medicamentos",
+            "desc": "Catálogo oficial de medicamentos del IMSS para prescripciones y referencias.",
+            "emoji": "🏛️"
+        },
+        {
+            "nombre": "Medscape",
+            "url": "https://www.medscape.com/",
+            "desc": "Noticias médicas, guías clínicas, calculadoras de dosis y educación continua.",
+            "emoji": "🔬"
+        },
+        {
+            "nombre": "UpToDate",
+            "url": "https://www.uptodate.com/",
+            "desc": "Evidencia clínica actualizada. Referencia de práctica médica basada en evidencia.",
+            "emoji": "📖"
+        },
+        {
+            "nombre": "SAT - RFC y Facturación",
+            "url": "https://www.sat.gob.mx/",
+            "desc": "Portal del SAT para emitir facturas electrónicas, declaraciones y trámites fiscales.",
+            "emoji": "🧾"
+        },
+        {
+            "nombre": "COFEPRIS",
+            "url": "https://www.gob.mx/cofepris",
+            "desc": "Comisión Federal para la Protección contra Riesgos Sanitarios. Regulación y permisos.",
+            "emoji": "⚕️"
+        },
+        {
+            "nombre": "Aventura con las Tablas Pro",
+            "url": "https://aventura-tablas-pro.streamlit.app/",
+            "desc": "App educativa para niños. Practica las tablas de multiplicar de forma divertida.",
+            "emoji": "✏️"
+        },
+    ]
+
+    if "webs_custom_med" not in st.session_state:
+        st.session_state.webs_custom_med = []
+
+    todas_webs = WEBS_FIJAS + st.session_state.webs_custom_med
+
+    cols = st.columns(3)
+    for i, w in enumerate(todas_webs):
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:12px;padding:18px;margin-bottom:14px;color:white;">
+                <div style="font-size:2rem">{w['emoji']}</div>
+                <div style="font-weight:700;font-size:1rem;margin:6px 0">{w['nombre']}</div>
+                <div style="font-size:0.82rem;opacity:0.9;margin-bottom:10px">{w['desc']}</div>
+                <a href="{w['url']}" target="_blank"
+                   style="background:rgba(255,255,255,0.2);color:white;padding:6px 14px;border-radius:20px;text-decoration:none;font-size:0.82rem;font-weight:600;">
+                   🔗 Visitar
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("➕ Agregar web personalizada")
+    with st.form("form_web_med"):
+        wc1, wc2 = st.columns(2)
+        with wc1:
+            w_nombre = st.text_input("Nombre del sitio")
+            w_url    = st.text_input("URL (https://...)")
+        with wc2:
+            w_emoji  = st.text_input("Emoji", value="🌐")
+            w_desc   = st.text_area("Descripción corta", height=80)
+        if st.form_submit_button("Agregar", type="primary"):
+            if w_nombre and w_url:
+                st.session_state.webs_custom_med.append({
+                    "nombre": w_nombre, "url": w_url,
+                    "desc": w_desc, "emoji": w_emoji
+                })
+                st.success(f"'{w_nombre}' agregada correctamente.")
+                st.rerun()
+            else:
+                st.warning("Nombre y URL son obligatorios.")
