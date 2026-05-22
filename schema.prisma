@@ -1,0 +1,93 @@
+generator client {
+  provider      = "prisma-client-py"
+  interface     = "asyncio"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Paciente {
+  id           Int        @id @default(autoincrement())
+  nombre       String?
+  telefono     String     @unique
+  email        String?
+  fechaNac     DateTime?
+  sexo         String?    @default("No especificado")
+  direccion    String?
+  alergias     String?
+  antecedentes String?
+  medicamentos String?
+  tipoSangre   String?
+  notas        String?
+  citas        Cita[]
+  consultas    Consulta[]
+  cobros       Cobro[]
+  createdAt    DateTime   @default(now())
+}
+
+model Cita {
+  id         Int       @id @default(autoincrement())
+  pacienteId Int
+  paciente   Paciente  @relation(fields: [pacienteId], references: [id])
+  fecha      DateTime
+  motivo     String    @default("Consulta general")
+  status     String    @default("PENDIENTE")
+  notas      String?
+  consulta   Consulta?
+  createdAt  DateTime  @default(now())
+}
+
+model Consulta {
+  id            Int       @id @default(autoincrement())
+  pacienteId    Int
+  paciente      Paciente  @relation(fields: [pacienteId], references: [id])
+  citaId        Int?      @unique
+  cita          Cita?     @relation(fields: [citaId], references: [id])
+  fecha         DateTime  @default(now())
+  motivo        String    @default("Consulta")
+  sintomas      String?
+  diagnostico   String?
+  tratamiento   String?
+  receta        String?
+  tension       String?
+  peso          Float?
+  talla         Float?
+  temperatura   Float?
+  glucosa       Float?
+  spo2          Float?
+  observaciones String?
+  cobro         Cobro?
+  createdAt     DateTime  @default(now())
+}
+
+model Cobro {
+  id         Int       @id @default(autoincrement())
+  pacienteId Int
+  paciente   Paciente  @relation(fields: [pacienteId], references: [id])
+  consultaId Int?      @unique
+  consulta   Consulta? @relation(fields: [consultaId], references: [id])
+  concepto   String    @default("Consulta médica")
+  monto      Float     @default(500)
+  pagado     Boolean   @default(false)
+  metodoPago String?
+  fecha      DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+}
+
+model Inventario {
+  id          Int       @id @default(autoincrement())
+  nombre      String
+  categoria   String    @default("Medicamento")
+  cantidad    Int       @default(0)
+  unidad      String    @default("piezas")
+  minimo      Int       @default(5)
+  precio      Float?
+  proveedor   String?
+  vencimiento DateTime?
+  notas       String?
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+}
