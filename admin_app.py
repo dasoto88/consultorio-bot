@@ -4,6 +4,8 @@ import os
 import threading
 import time
 import requests
+import subprocess
+import sys
 from datetime import datetime, timedelta, date
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
@@ -14,6 +16,19 @@ from reportlab.lib.units import inch
 
 st.set_page_config(page_title="MedPanel Pro", layout="wide", page_icon="🏥",
                    initial_sidebar_state="expanded")
+
+# ================= AUTO MIGRACIÓN DB =================
+@st.cache_resource
+def _migrar_db():
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "prisma", "db", "push", "--accept-data-loss"],
+            capture_output=True, text=True, timeout=60
+        )
+        return f"OK: {result.stdout[-200:]}" if result.returncode == 0 else f"ERR: {result.stderr[-200:]}"
+    except Exception as e:
+        return f"Skip: {e}"
+_migrar_db()
 
 # ================= KEEP-ALIVE =================
 @st.cache_resource
