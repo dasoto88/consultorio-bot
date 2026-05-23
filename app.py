@@ -202,8 +202,8 @@ if not st.session_state.logged_in:
         user = st.text_input("Usuario", placeholder="admin")
         pwd  = st.text_input("Contrasena", type="password")
         if st.button("Entrar", type="primary", use_container_width=True):
-            u_ok = user == _s("ADMIN_USER", ADMIN_USER)
-            p_ok = pwd  == _s("ADMIN_PASSWORD", ADMIN_PASS)
+            u_ok = user == ADMIN_USER
+            p_ok = pwd  == ADMIN_PASS
             if u_ok and p_ok:
                 st.session_state.logged_in = True
                 st.rerun()
