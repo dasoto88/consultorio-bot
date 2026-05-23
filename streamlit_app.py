@@ -428,8 +428,8 @@ with t_cons:
                 v1.write(f"**Motivo:** {con['motivo']}")
                 v1.write(f"**Diagnostico:** {con['diagnostico'] or '—'}")
                 v2.write(f"**Tension:** {con['tension'] or '—'}")
-                v2.write(f"**Peso:** {f\"{con['peso']} kg\" if con['peso'] else '—'}")
-                v3.write(f"**Temp:** {f\"{con['temperatura']} °C\" if con['temperatura'] else '—'}")
+                v2.write(f"**Peso:** {str(con['peso']) + ' kg' if con['peso'] else '—'}")
+                v3.write(f"**Temp:** {str(con['temperatura']) + ' C' if con['temperatura'] else '—'}")
                 if con['tratamiento']:
                     st.write(f"**Tratamiento:** {con['tratamiento']}")
 
