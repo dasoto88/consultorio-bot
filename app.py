@@ -2024,6 +2024,14 @@ if t_admin:
                     },
                     use_container_width=True, num_rows="fixed", key="editor_users"
                 )
+                # Excel export
+                import io as _io
+                _xl_buf = _io.BytesIO()
+                _df.to_excel(_xl_buf, index=False, engine="openpyxl")
+                st.download_button("📥 Descargar Excel", data=_xl_buf.getvalue(),
+                                   file_name="usuarios.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   use_container_width=True)
                 col_g, col_e = st.columns([1, 1])
                 with col_g:
                     if st.button("💾 Guardar cambios", type="primary", use_container_width=True):
