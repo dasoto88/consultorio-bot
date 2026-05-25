@@ -582,26 +582,34 @@ if _qp.get("payment_id") and MP_TOKEN:
     _status = _resp.get("status", "")
     _ref    = _resp.get("external_reference", "")
     if _status == "approved" and _ref:
-        # Busca prospecto para obtener nombre y plan
+        # Tarea 2: activar usuario pendiente creado en el form
         _pro = one("SELECT nombre, mensaje FROM prospectos WHERE email=? ORDER BY id DESC LIMIT 1", (_ref,))
-        _nombre = (_pro[0] if _pro else _ref.split("@")[0]).replace(" ","").lower()
-        _usuario = f"dr{_nombre[:8]}{random.randint(100,999)}"
+        _exist = db.execute("SELECT id, usuario FROM usuarios WHERE email=?", (_ref,)).fetchone()
         _raw_pass = _gen_pass()
         _hash = bcrypt.hashpw(_raw_pass.encode(), bcrypt.gensalt()).decode()
-        _lic = str(uuid.uuid4())
-        # Detecta plan desde mensaje del prospecto
-        _msg = (_pro[1] if _pro and _pro[1] else "").lower()
+        _lic  = str(uuid.uuid4())
+        if _exist and _exist["usuario"]:
+            # Usuario ya tiene nombre de usuario asignado (creado por admin)
+            _usuario = _exist["usuario"]
+        else:
+            _nombre  = (_pro[0] if _pro else _ref.split("@")[0]).replace(" ","").lower()
+            _usuario = f"dr{_nombre[:8]}{random.randint(100,999)}"
+        _msg     = (_pro[1] if _pro and _pro[1] else "").lower()
         _plan_wh = "Pro" if "pro" in _msg else "Básico"
-        # Marca prospecto como pagado
-        qry("UPDATE prospectos SET mensaje = REPLACE(mensaje,'[pendiente]','[pagado]') WHERE email=?", (_ref,))
-        # Inserta (o ignora si ya existe) en usuarios
+        # UPDATE: activa cuenta, asigna licencia y password
+        qry("""UPDATE usuarios
+               SET activo=1, licencia=?, password=?, usuario=COALESCE(NULLIF(usuario,''),?),
+                   plan=COALESCE(NULLIF(plan,''),?)
+               WHERE email=?""",
+            (_lic, _hash, _usuario, _plan_wh, _ref))
+        # Si no existía, inserta
         qry("""INSERT OR IGNORE INTO usuarios(nombre,email,usuario,password,licencia,activo,plan,created_at)
                VALUES(?,?,?,?,?,1,?,(SELECT datetime('now')))""",
             (_pro[0] if _pro else _ref, _ref, _usuario, _hash, _lic, _plan_wh))
-        # Aplica permisos del plan
         _new_uid = db.execute("SELECT id FROM usuarios WHERE email=?", (_ref,)).fetchone()
         if _new_uid:
             aplicar_permisos_plan(_new_uid["id"], _plan_wh)
+        qry("UPDATE prospectos SET mensaje=REPLACE(mensaje,'pendiente','pagado') WHERE email=?", (_ref,))
         _enviar_credenciales(_ref, _usuario, _raw_pass)
         st.success("✅ Pago aprobado. Revisa tu correo para recibir tus accesos.")
         st.query_params.clear()
@@ -710,27 +718,33 @@ if not st.session_state.logged_in:
 
         if submitted:
             if s_nombre and s_email:
+                precios = {"Básico — $299/mes": 299, "Profesional — $599/mes": 599, "Clínica — $999/mes": 999}
+                monto       = precios[s_plan]
+                nombre_plan = s_plan.split("—")[0].strip()
+                # Tarea 1: INSERT pendiente (sin licencia ni password aún)
+                qry("""INSERT OR IGNORE INTO usuarios(nombre,email,plan,activo,created_at)
+                       VALUES(?,?,?,0,(SELECT datetime('now')))""",
+                    (s_nombre, s_email, nombre_plan))
+                qry("UPDATE usuarios SET nombre=?,plan=? WHERE email=? AND activo=0",
+                    (s_nombre, nombre_plan, s_email))
                 qry("INSERT INTO prospectos(nombre,email,especialidad,telefono,mensaje) VALUES(?,?,?,?,?)",
                     (s_nombre, s_email, s_esp, s_tel, f"[{s_plan}] {s_msj}"))
-                precios = {"Básico — $299/mes": 299, "Profesional — $599/mes": 599, "Clínica — $999/mes": 999}
-                monto   = precios[s_plan]
-                nombre_plan = s_plan.split("—")[0].strip()
                 if MP_TOKEN:
                     import mercadopago
-                    sdk = mercadopago.SDK(MP_TOKEN)
+                    sdk  = mercadopago.SDK(MP_TOKEN)
                     pref = sdk.preference().create({
                         "items": [{"title": f"MedPanel Pro — {nombre_plan}", "quantity": 1,
                                    "currency_id": "MXN", "unit_price": float(monto)}],
                         "payer": {"email": s_email, "name": s_nombre},
-                        "back_urls": {"success": _s("APP_URL","") + "?paid=approved",
+                        "back_urls": {"success": _s("APP_URL","") + "?payment_id={preference_id}",
                                       "failure": _s("APP_URL","") + "?paid=failure"},
                         "auto_return": "approved",
                         "external_reference": s_email,
                     })
-                    link = pref["response"].get("init_point","")
+                    link = pref["response"].get("init_point", "")
                     if link:
-                        st.success(f"✅ Registro guardado, {s_nombre.split()[0]}. Haz clic para pagar:")
                         st.link_button(f"💳 Pagar {nombre_plan} ${monto}/mes", link, type="primary")
+                        st.warning("⚠️ Completa el pago para activar tu cuenta. Recibirás tus credenciales por correo.")
                     else:
                         st.error("Error al crear preferencia MP. Contacta soporte.")
                 else:
