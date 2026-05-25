@@ -740,23 +740,32 @@ if not st.session_state.logged_in:
                 qry("INSERT INTO prospectos(nombre,email,especialidad,telefono,mensaje) VALUES(?,?,?,?,?)",
                     (s_nombre, s_email, s_esp, s_tel, f"[{s_plan}] {s_msj}"))
                 if MP_TOKEN:
-                    import mercadopago
-                    sdk  = mercadopago.SDK(MP_TOKEN)
-                    pref = sdk.preference().create({
-                        "items": [{"title": f"MedPanel Pro — {nombre_plan}", "quantity": 1,
-                                   "currency_id": "MXN", "unit_price": float(monto)}],
-                        "payer": {"email": s_email, "name": s_nombre},
-                        "back_urls": {"success": _s("APP_URL","") + "?payment_id={preference_id}",
-                                      "failure": _s("APP_URL","") + "?paid=failure"},
-                        "auto_return": "approved",
-                        "external_reference": s_email,
-                    })
-                    link = pref["response"].get("init_point", "")
-                    if link:
-                        st.link_button(f"💳 Pagar {nombre_plan} ${monto}/mes", link, type="primary")
-                        st.warning("⚠️ Completa el pago para activar tu cuenta. Recibirás tus credenciales por correo.")
-                    else:
-                        st.error("Error al crear preferencia MP. Contacta soporte.")
+                    try:
+                        import mercadopago
+                        _app_url = _s("APP_URL", "https://consultorio-bot.streamlit.app")
+                        sdk  = mercadopago.SDK(MP_TOKEN)
+                        pref = sdk.preference().create({
+                            "items": [{"title": f"MedPanel Pro — {nombre_plan}", "quantity": 1,
+                                       "currency_id": "MXN", "unit_price": float(monto)}],
+                            "payer": {"email": s_email, "name": s_nombre},
+                            "back_urls": {
+                                "success": _app_url + "?payment_id={payment.id}",
+                                "failure": _app_url + "?paid=failure",
+                                "pending": _app_url + "?paid=pending",
+                            },
+                            "auto_return": "approved",
+                            "external_reference": s_email,
+                            "notification_url": _app_url + "?payment_id={payment.id}",
+                        })
+                        link = pref["response"].get("init_point", "")
+                        if link:
+                            st.success(f"✅ ¡Gracias {s_nombre.split()[0]}! Haz clic para completar el pago:")
+                            st.link_button(f"💳 Pagar {nombre_plan} ${monto}/mes → MercadoPago", link, type="primary", use_container_width=True)
+                            st.info("⚠️ Recibirás usuario y contraseña en tu correo al confirmar el pago.")
+                        else:
+                            st.error(f"Error MP: {pref['response']}. Contacta soporte.")
+                    except Exception as _mp_ex:
+                        st.error(f"Error al conectar con MercadoPago: {_mp_ex}")
                 else:
                     email_solicitud(s_nombre, s_esp, s_tel, s_email, s_msj)
                     st.success(f"✅ ¡Gracias, {s_nombre.split()[0]}! Te contactaremos en menos de 24 horas.")
@@ -1037,6 +1046,26 @@ else:
     t_admin = tabs[10] if _rol == "admin"  else None
     t_salir = tabs[-1]
     with t_salir:
+        # Cambiar contraseña
+        st.markdown("### 🔑 Cambiar Contraseña")
+        with st.form("form_cambiar_pass"):
+            _cp_actual = st.text_input("Contraseña actual", type="password")
+            _cp_nueva  = st.text_input("Nueva contraseña", type="password")
+            _cp_conf   = st.text_input("Confirmar nueva contraseña", type="password")
+            if st.form_submit_button("Actualizar Contraseña"):
+                import bcrypt as _bcp
+                _uid = st.session_state.get("user_id")
+                _urow = one("SELECT password FROM usuarios WHERE id=?", (_uid,)) if _uid else None
+                if _urow and _bcp.checkpw(_cp_actual.encode(), _urow["password"].encode()):
+                    if _cp_nueva and _cp_nueva == _cp_conf:
+                        _nhash = _bcp.hashpw(_cp_nueva.encode(), _bcp.gensalt()).decode()
+                        qry("UPDATE usuarios SET password=? WHERE id=?", (_nhash, _uid))
+                        st.success("✅ Contraseña actualizada.")
+                    else:
+                        st.error("Las contraseñas no coinciden o están vacías.")
+                else:
+                    st.error("Contraseña actual incorrecta.")
+        st.divider()
         mostrar_logout_tab()
 
 # ════════════════════════════════════════════════════════════════════════════
