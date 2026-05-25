@@ -2002,6 +2002,9 @@ if t_admin:
 
         with au1:
             _usuarios = rows("SELECT id,nombre,email,usuario,plan,rol,activo,licencia,created_at FROM usuarios ORDER BY created_at DESC")
+            _buscar = st.text_input("🔍 Buscar email", placeholder="ejemplo@correo.com", key="admin_buscar_email")
+            if _buscar:
+                _usuarios = [u for u in _usuarios if _buscar.lower() in (u["email"] or "").lower()]
             if not _usuarios:
                 st.info("No hay usuarios registrados aún.")
             else:
