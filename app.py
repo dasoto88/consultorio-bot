@@ -538,6 +538,12 @@ def aplicar_permisos_plan(user_id, plan):
     qry("UPDATE usuarios SET citas_max=?, reportes=? WHERE id=?",
         (lim["citas_max"], lim["reportes"], user_id))
 
+def mostrar_logout_tab():
+    st.markdown("### 🚪 Cerrar Sesión")
+    if st.button("Cerrar Sesión", key="logout_tab", type="primary"):
+        st.session_state.clear()
+        st.rerun()
+
 def _gen_pass(n=8):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
 
@@ -1007,11 +1013,7 @@ else:
     t_admin = tabs[10] if _rol == "admin"  else None
     t_salir = tabs[-1]
     with t_salir:
-        st.markdown("### 🚪 Cerrar Sesión")
-        if st.button("Sí, cerrar sesión", type="primary"):
-            for _k in list(st.session_state.keys()):
-                del st.session_state[_k]
-            st.rerun()
+        mostrar_logout_tab()
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 – AGENDA
