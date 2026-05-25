@@ -4,6 +4,8 @@ import plotly.express as px, plotly.graph_objects as go
 import smtplib, random, string
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from datetime import datetime, timedelta, date
 from io import BytesIO
 from math import sqrt
@@ -560,21 +562,50 @@ def _log(accion, detalle):
 def _enviar_credenciales(email, usuario, password):
     if not SMTP_USER or not SMTP_PASS:
         return
+    _app_url = _s("APP_URL", "https://consultorio-bot.streamlit.app")
     msg = MIMEMultipart()
     msg["From"]    = SMTP_USER
     msg["To"]      = email
-    msg["Subject"] = "✅ Tu acceso a ConsultorioBot"
+    msg["Subject"] = "✅ Tu cuenta en MedPanel Pro está activa"
     cuerpo = f"""
-    <h2>¡Bienvenido a MedPanel Pro!</h2>
-    <p>Tu pago fue aprobado. Aquí están tus credenciales:</p>
-    <ul>
-      <li><b>Usuario:</b> {usuario}</li>
-      <li><b>Contraseña:</b> {password}</li>
-    </ul>
-    <p>Entra en: <a href="{_s('APP_URL','')}">Abrir App</a></p>
-    <p style="color:#888;font-size:12px">Por seguridad, cambia tu contraseña al ingresar.</p>
-    """
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+      <div style="background:#6C63FF;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+        <h1 style="color:#fff;margin:0;font-size:24px">🏥 MedPanel Pro</h1>
+        <p style="color:#ddd;margin:6px 0 0">Tu cuenta está activada</p>
+      </div>
+      <div style="background:#f9f9f9;padding:28px;border-radius:0 0 12px 12px;border:1px solid #e0e0e0">
+        <p>¡Bienvenido/a! Tu acceso a <b>MedPanel Pro</b> ha sido activado. Estos son tus datos de ingreso:</p>
+        <table style="width:100%;background:#fff;border-radius:8px;border:1px solid #ddd;margin:16px 0">
+          <tr><td style="padding:12px 16px;color:#666">👤 Usuario</td>
+              <td style="padding:12px 16px;font-weight:bold;font-size:18px">{usuario}</td></tr>
+          <tr style="background:#f0eeff"><td style="padding:12px 16px;color:#666">🔑 Contraseña</td>
+              <td style="padding:12px 16px;font-weight:bold;font-size:18px;letter-spacing:2px">{password}</td></tr>
+        </table>
+        <p style="text-align:center;margin:20px 0">
+          <a href="{_app_url}" style="background:#6C63FF;color:#fff;padding:12px 32px;
+             border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px">
+            🚀 Entrar a MedPanel Pro
+          </a>
+        </p>
+        <p style="color:#e74c3c;font-size:13px">⚠️ <b>Importante:</b> Cambia tu contraseña al primer ingreso
+           desde la pestaña <i>Salir → Cambiar Contraseña</i>.</p>
+        <p style="color:#888;font-size:12px">Se adjunta el manual de usuario en PDF con todas las instrucciones.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#aaa;font-size:11px;text-align:center">
+          Soporte: dasoto88122911@gmail.com | WhatsApp: 633 112 4596
+        </p>
+      </div>
+    </div>"""
     msg.attach(MIMEText(cuerpo, "html"))
+    # Adjuntar manual PDF
+    _pdf_path = os.path.join(os.path.dirname(__file__), "manual_medpanel.pdf")
+    if os.path.exists(_pdf_path):
+        with open(_pdf_path, "rb") as _pf:
+            _part = MIMEBase("application", "octet-stream")
+            _part.set_payload(_pf.read())
+        encoders.encode_base64(_part)
+        _part.add_header("Content-Disposition", "attachment", filename="Manual_MedPanel_Pro.pdf")
+        msg.attach(_part)
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as srv:
             srv.starttls()
