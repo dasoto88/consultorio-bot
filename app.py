@@ -999,11 +999,19 @@ else:
         _tab_labels.append("🧑‍💼 Mi Secretaria")
     if _rol == "admin":
         _tab_labels.append("👑 Admin")
+    _tab_labels.append("🚪 Salir")
     tabs = st.tabs(_tab_labels)
     (t_agenda, t_pacs, t_cons, t_rec,
      t_cobros, t_inv, t_calc, t_dir, t_stats, t_webs) = tabs[:10]
-    t_sec  = tabs[10] if _rol == "doctor" else None
-    t_admin = tabs[10] if _rol == "admin" else None
+    t_sec   = tabs[10] if _rol == "doctor" else None
+    t_admin = tabs[10] if _rol == "admin"  else None
+    t_salir = tabs[-1]
+    with t_salir:
+        st.markdown("### 🚪 Cerrar Sesión")
+        if st.button("Sí, cerrar sesión", type="primary"):
+            for _k in list(st.session_state.keys()):
+                del st.session_state[_k]
+            st.rerun()
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 – AGENDA
