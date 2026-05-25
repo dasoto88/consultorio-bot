@@ -42,6 +42,7 @@ CLINIC_NAME     = _s("CLINIC_NAME",      "Consultorio Médico")
 DOCTOR_NAME     = _s("DOCTOR_NAME",      "Dr. Médico")
 SPECIALTY       = _s("DOCTOR_SPECIALTY", "Medicina General")
 PHONE           = _s("PHONE_NUMBER",     "")
+MP_TOKEN        = _s("MP_ACCESS_TOKEN",  "")
 CONSULTA_PRECIO = float(_s("CONSULTA_PRECIO", "500"))
 ADMIN_EMAIL     = _s("ADMIN_EMAIL",      "")
 SMTP_SERVER     = _s("SMTP_SERVER",      "smtp.gmail.com")
@@ -325,6 +326,14 @@ def init_db():
         mensaje TEXT, status TEXT DEFAULT 'NUEVO',
         created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS usuarios(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT, email TEXT UNIQUE, usuario TEXT UNIQUE,
+        password TEXT, licencia TEXT, activo INTEGER DEFAULT 0,
+        plan TEXT DEFAULT 'Básico', rol TEXT DEFAULT 'doctor',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS directorio(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre TEXT, telefono TEXT, email TEXT,
@@ -345,8 +354,24 @@ def init_db():
         used INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS secretarias(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER UNIQUE,
+        doctor_id INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
     """)
     conn.commit()
+    for _migration in [
+        "ALTER TABLE usuarios ADD COLUMN rol TEXT DEFAULT 'doctor'",
+        "ALTER TABLE usuarios ADD COLUMN citas_max INTEGER DEFAULT 50",
+        "ALTER TABLE usuarios ADD COLUMN reportes INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(_migration)
+            conn.commit()
+        except Exception:
+            pass
     return conn
 
 db = init_db()
@@ -495,13 +520,88 @@ def generar_receta_pdf(paciente, diagnostico, receta_texto):
     return buf
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
-for k, v in [('logged_in', False), ('show_recov_code', None), ('recov_verified', False)]:
+for k, v in [('logged_in', False), ('show_recov_code', None), ('recov_verified', False), ('rol', 'doctor')]:
     if k not in st.session_state:
         st.session_state[k] = v
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  LANDING PAGE (PRE-LOGIN)
 # ══════════════════════════════════════════════════════════════════════════════
+# ─── PAYMENT HANDLER ─────────────────────────────────────────────────────────
+PLAN_LIMITES = {
+    "Básico": {"citas_max": 50,  "reportes": 0},
+    "Pro":    {"citas_max": 500, "reportes": 1},
+}
+
+def aplicar_permisos_plan(user_id, plan):
+    lim = PLAN_LIMITES.get(plan, PLAN_LIMITES["Básico"])
+    qry("UPDATE usuarios SET citas_max=?, reportes=? WHERE id=?",
+        (lim["citas_max"], lim["reportes"], user_id))
+
+def _gen_pass(n=8):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+
+def _enviar_credenciales(email, usuario, password):
+    if not SMTP_USER or not SMTP_PASS:
+        return
+    msg = MIMEMultipart()
+    msg["From"]    = SMTP_USER
+    msg["To"]      = email
+    msg["Subject"] = "✅ Tu acceso a ConsultorioBot"
+    cuerpo = f"""
+    <h2>¡Bienvenido a MedPanel Pro!</h2>
+    <p>Tu pago fue aprobado. Aquí están tus credenciales:</p>
+    <ul>
+      <li><b>Usuario:</b> {usuario}</li>
+      <li><b>Contraseña:</b> {password}</li>
+    </ul>
+    <p>Entra en: <a href="{_s('APP_URL','')}">Abrir App</a></p>
+    <p style="color:#888;font-size:12px">Por seguridad, cambia tu contraseña al ingresar.</p>
+    """
+    msg.attach(MIMEText(cuerpo, "html"))
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as srv:
+            srv.starttls()
+            srv.login(SMTP_USER, SMTP_PASS)
+            srv.sendmail(SMTP_USER, email, msg.as_string())
+    except Exception as e:
+        st.warning(f"Email no enviado: {e}")
+
+_qp = st.query_params
+if _qp.get("payment_id") and MP_TOKEN:
+    import mercadopago, uuid, bcrypt
+    _sdk  = mercadopago.SDK(MP_TOKEN)
+    _pay  = _sdk.payment().get(_qp["payment_id"])
+    _resp = _pay.get("response", {})
+    _status = _resp.get("status", "")
+    _ref    = _resp.get("external_reference", "")
+    if _status == "approved" and _ref:
+        # Busca prospecto para obtener nombre y plan
+        _pro = qry("SELECT nombre, mensaje FROM prospectos WHERE email=? ORDER BY id DESC LIMIT 1", (_ref,), one=True)
+        _nombre = (_pro[0] if _pro else _ref.split("@")[0]).replace(" ","").lower()
+        _usuario = f"dr{_nombre[:8]}{random.randint(100,999)}"
+        _raw_pass = _gen_pass()
+        _hash = bcrypt.hashpw(_raw_pass.encode(), bcrypt.gensalt()).decode()
+        _lic = str(uuid.uuid4())
+        # Detecta plan desde mensaje del prospecto
+        _msg = (_pro[1] if _pro and _pro[1] else "").lower()
+        _plan_wh = "Pro" if "pro" in _msg else "Básico"
+        # Marca prospecto como pagado
+        qry("UPDATE prospectos SET mensaje = REPLACE(mensaje,'[pendiente]','[pagado]') WHERE email=?", (_ref,))
+        # Inserta (o ignora si ya existe) en usuarios
+        qry("""INSERT OR IGNORE INTO usuarios(nombre,email,usuario,password,licencia,activo,plan,created_at)
+               VALUES(?,?,?,?,?,1,?,(SELECT datetime('now')))""",
+            (_pro[0] if _pro else _ref, _ref, _usuario, _hash, _lic, _plan_wh))
+        # Aplica permisos del plan
+        _new_uid = db.execute("SELECT id FROM usuarios WHERE email=?", (_ref,)).fetchone()
+        if _new_uid:
+            aplicar_permisos_plan(_new_uid["id"], _plan_wh)
+        _enviar_credenciales(_ref, _usuario, _raw_pass)
+        st.success("✅ Pago aprobado. Revisa tu correo para recibir tus accesos.")
+        st.query_params.clear()
+    elif _status:
+        st.warning(f"Estado del pago: {_status}. Contacta soporte si hay dudas.")
+
 if not st.session_state.logged_in:
 
     # ── HERO ──────────────────────────────────────────────────────────────────
@@ -563,9 +663,20 @@ if not st.session_state.logged_in:
             if st.button("→ Entrar al Panel", type="primary", use_container_width=True, key="btn_login"):
                 if user == ADMIN_USER and pwd == ADMIN_PASS:
                     st.session_state.logged_in = True
+                    st.session_state.rol = "admin"
+                    st.session_state.plan = "Clínica"
                     st.rerun()
                 else:
-                    st.error("❌ Usuario o contraseña incorrectos")
+                    import bcrypt as _bcrypt
+                    _u = qry("SELECT id,nombre,password,plan,activo,rol FROM usuarios WHERE usuario=? LIMIT 1", (user,), one=True)
+                    if _u and _u["activo"] and _bcrypt.checkpw(pwd.encode(), _u["password"].encode()):
+                        st.session_state.logged_in = True
+                        st.session_state.rol  = _u["rol"] or "doctor"
+                        st.session_state.plan = _u["plan"] or "Básico"
+                        st.session_state.user_id = _u["id"]
+                        st.rerun()
+                    else:
+                        st.error("❌ Usuario o contraseña incorrectos")
             st.markdown('<div style="text-align:center;margin-top:.8rem;font-size:.8rem;color:rgba(255,255,255,.6)">'
                         '¿No tienes cuenta? Usa la pestaña <b>Solicitar Alta</b></div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -587,17 +698,41 @@ if not st.session_state.logged_in:
                     "Odontología", "Psiquiatría", "Endocrinología", "Otra"
                 ])
                 s_tel   = st.text_input("Teléfono")
+            s_plan = st.selectbox("Plan *", ["Básico — $299/mes", "Profesional — $599/mes", "Clínica — $999/mes"])
             s_msj = st.text_area("¿Algo que quieras contarnos?", height=80)
-            if st.form_submit_button("📨 Enviar solicitud", type="primary"):
-                if s_nombre and s_email:
-                    qry("INSERT INTO prospectos(nombre,email,especialidad,telefono,mensaje) VALUES(?,?,?,?,?)",
-                        (s_nombre, s_email, s_esp, s_tel, s_msj))
+            submitted = st.form_submit_button("💳 Continuar al Pago", type="primary")
+
+        if submitted:
+            if s_nombre and s_email:
+                qry("INSERT INTO prospectos(nombre,email,especialidad,telefono,mensaje) VALUES(?,?,?,?,?)",
+                    (s_nombre, s_email, s_esp, s_tel, f"[{s_plan}] {s_msj}"))
+                precios = {"Básico — $299/mes": 299, "Profesional — $599/mes": 599, "Clínica — $999/mes": 999}
+                monto   = precios[s_plan]
+                nombre_plan = s_plan.split("—")[0].strip()
+                if MP_TOKEN:
+                    import mercadopago
+                    sdk = mercadopago.SDK(MP_TOKEN)
+                    pref = sdk.preference().create({
+                        "items": [{"title": f"MedPanel Pro — {nombre_plan}", "quantity": 1,
+                                   "currency_id": "MXN", "unit_price": float(monto)}],
+                        "payer": {"email": s_email, "name": s_nombre},
+                        "back_urls": {"success": _s("APP_URL","") + "?paid=approved",
+                                      "failure": _s("APP_URL","") + "?paid=failure"},
+                        "auto_return": "approved",
+                        "external_reference": s_email,
+                    })
+                    link = pref["response"].get("init_point","")
+                    if link:
+                        st.success(f"✅ Registro guardado, {s_nombre.split()[0]}. Haz clic para pagar:")
+                        st.link_button(f"💳 Pagar {nombre_plan} ${monto}/mes", link, type="primary")
+                    else:
+                        st.error("Error al crear preferencia MP. Contacta soporte.")
+                else:
                     email_solicitud(s_nombre, s_esp, s_tel, s_email, s_msj)
-                    ok, _ = email_bienvenida(s_nombre, s_email)
                     st.success(f"✅ ¡Gracias, {s_nombre.split()[0]}! Te contactaremos en menos de 24 horas.")
                     st.balloons()
-                else:
-                    st.warning("Nombre y correo son obligatorios")
+            else:
+                st.warning("Nombre y correo son obligatorios")
 
         st.markdown("---")
         st.markdown("### 💳 Nuestros Planes")
@@ -779,8 +914,14 @@ with st.sidebar:
     if pend_count: st.warning(f"💰 {pend_count} cobros pendientes")
     if inv_bajo:   st.warning(f"📦 {inv_bajo} artículos bajos")
     st.markdown("---")
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
-        st.session_state.clear(); st.rerun()
+    _sid_rol  = st.session_state.get("rol", "")
+    _sid_plan = st.session_state.get("plan", "")
+    if _sid_rol:
+        st.caption(f"🔑 {_sid_rol.capitalize()} · {_sid_plan}")
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, type="secondary"):
+        for _k in list(st.session_state.keys()):
+            del st.session_state[_k]
+        st.rerun()
 
 # ── BANNER ────────────────────────────────────────────────────────────────────
 hora  = datetime.now().hour
@@ -819,14 +960,50 @@ k4.markdown(f'<div class="kpi-card kpi-green"><div class="kpi-icon">💵</div><d
 k5.markdown(f'<div class="kpi-card kpi-red"><div class="kpi-icon">💳</div><div class="kpi-val">${por_cobrar:,.0f}</div><div class="kpi-lbl">Por cobrar</div></div>', unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
+# ── PLAN GATE ─────────────────────────────────────────────────────────────────
+_PLAN_NIVEL = {"Básico": 1, "Profesional": 2, "Clínica": 3}
+_user_plan  = getattr(st.session_state, "plan", "Clínica") if st.session_state.rol == "admin" else st.session_state.get("plan", "Clínica")
+_nivel      = _PLAN_NIVEL.get(_user_plan, 3)
+
+def _gate(req: int, nombre: str, upgrade: str):
+    """Muestra candado si el plan del usuario no alcanza el nivel requerido."""
+    if _nivel < req:
+        st.markdown(f"""
+<div style="text-align:center;padding:3rem 1rem;border:2px dashed rgba(108,99,255,.4);
+border-radius:16px;background:rgba(108,99,255,.05);margin-top:1rem">
+  <div style="font-size:3rem">🔒</div>
+  <h3 style="margin:.5rem 0">{nombre} no disponible en tu plan</h3>
+  <p style="color:#888">Requiere plan <b>{upgrade}</b> o superior.</p>
+  <p style="color:#aaa;font-size:.9rem">Escríbenos por WhatsApp para hacer upgrade.</p>
+  <a href="https://wa.me/526331124596?text=Quiero%20cambiar%20al%20plan%20{upgrade}"
+     target="_blank" style="display:inline-block;margin-top:1rem;padding:.7rem 1.8rem;
+     background:linear-gradient(135deg,#6C63FF,#9b5de5);color:#fff;border-radius:10px;
+     text-decoration:none;font-weight:700">💬 Hacer Upgrade</a>
+</div>""", unsafe_allow_html=True)
+        return True
+    return False
+
 # ── TABS PRINCIPALES ──────────────────────────────────────────────────────────
-tabs = st.tabs([
-    "📅 Agenda", "👥 Pacientes", "🩺 Consultas",
-    "💊 Recetas", "💰 Cobros", "📦 Inventario",
-    "🧮 Calculadoras", "📞 Directorio", "📊 Estadísticas", "🌐 Recursos"
-])
-(t_agenda, t_pacs, t_cons, t_rec,
- t_cobros, t_inv, t_calc, t_dir, t_stats, t_webs) = tabs
+_rol = st.session_state.get("rol", "doctor")
+
+if _rol == "secretaria":
+    _tab_labels = ["📅 Agenda", "👥 Pacientes"]
+    tabs = st.tabs(_tab_labels)
+    t_agenda, t_pacs = tabs
+    t_cons = t_rec = t_cobros = t_inv = t_calc = t_dir = t_stats = t_webs = t_admin = None
+else:
+    _tab_labels = ["📅 Agenda", "👥 Pacientes", "🩺 Consultas",
+                   "💊 Recetas", "💰 Cobros", "📦 Inventario",
+                   "🧮 Calculadoras", "📞 Directorio", "📊 Estadísticas", "🌐 Recursos"]
+    if _rol == "doctor":
+        _tab_labels.append("🧑‍💼 Mi Secretaria")
+    if _rol == "admin":
+        _tab_labels.append("👑 Admin")
+    tabs = st.tabs(_tab_labels)
+    (t_agenda, t_pacs, t_cons, t_rec,
+     t_cobros, t_inv, t_calc, t_dir, t_stats, t_webs) = tabs[:10]
+    t_sec  = tabs[10] if _rol == "doctor" else None
+    t_admin = tabs[10] if _rol == "admin" else None
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 – AGENDA
@@ -987,7 +1164,8 @@ with t_pacs:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 3 – CONSULTAS
 # ════════════════════════════════════════════════════════════════════════════
-with t_cons:
+if t_cons:
+ with t_cons:
     st.subheader("🩺 Consultas Médicas")
     ct1, ct2 = st.tabs(["📋 Ver Consultas", "➕ Nueva Consulta"])
 
@@ -1062,7 +1240,9 @@ with t_cons:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 4 – RECETAS PDF
 # ════════════════════════════════════════════════════════════════════════════
-with t_rec:
+if t_rec:
+ with t_rec:
+    if _gate(2, "💊 Recetas", "Profesional"): st.stop()
     st.subheader("💊 Generador de Recetas PDF")
     st.markdown('<div class="info-box">Genera recetas médicas profesionales en PDF, listas para imprimir o enviar digitalmente.</div>', unsafe_allow_html=True)
 
@@ -1113,7 +1293,9 @@ with t_rec:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 5 – COBROS
 # ════════════════════════════════════════════════════════════════════════════
-with t_cobros:
+if t_cobros:
+ with t_cobros:
+    if _gate(2, "💰 Cobros", "Profesional"): st.stop()
     st.subheader("💰 Cobros y Pagos")
     cob1, cob2 = st.columns([2, 1])
     with cob1:
@@ -1184,7 +1366,9 @@ with t_cobros:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 6 – INVENTARIO
 # ════════════════════════════════════════════════════════════════════════════
-with t_inv:
+if t_inv:
+ with t_inv:
+    if _gate(2, "📦 Inventario", "Profesional"): st.stop()
     st.subheader("📦 Inventario de Medicamentos y Materiales")
     inv1, inv2 = st.tabs(["📋 Stock actual", "➕ Agregar"])
 
@@ -1243,7 +1427,8 @@ with t_inv:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 7 – CALCULADORAS MÉDICAS
 # ════════════════════════════════════════════════════════════════════════════
-with t_calc:
+if t_calc:
+ with t_calc:
     st.subheader("🧮 Calculadoras Clínicas")
     st.markdown('<div class="info-box">Herramientas de apoyo clínico para cálculos médicos frecuentes.</div>', unsafe_allow_html=True)
 
@@ -1414,7 +1599,8 @@ with t_calc:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 8 – DIRECTORIO PERSONAL
 # ════════════════════════════════════════════════════════════════════════════
-with t_dir:
+if t_dir:
+ with t_dir:
     st.subheader("📞 Directorio Personal")
     CATEG_ICONS = {
         "Amigo":"👥","Familiar":"👨‍👩‍👧","Colega/Médico":"👨‍⚕️",
@@ -1517,7 +1703,9 @@ with t_dir:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 9 – ESTADÍSTICAS
 # ════════════════════════════════════════════════════════════════════════════
-with t_stats:
+if t_stats:
+ with t_stats:
+    if _gate(3, "📊 Estadísticas", "Clínica"): st.stop()
     st.subheader("📊 Estadísticas del Consultorio")
     try:
         ing_mes  = rows("SELECT strftime('%Y-%m',fecha) as mes, SUM(monto) as total, COUNT(*) as n FROM cobros WHERE pagado=1 GROUP BY mes ORDER BY mes DESC LIMIT 12")
@@ -1581,7 +1769,8 @@ with t_stats:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 10 – RECURSOS WEB + NOTAS RÁPIDAS
 # ════════════════════════════════════════════════════════════════════════════
-with t_webs:
+if t_webs:
+ with t_webs:
     w1, w2 = st.tabs(["🌐 Recursos Médicos", "📝 Notas Rápidas"])
 
     with w1:
@@ -1704,3 +1893,215 @@ with t_webs:
                         if st.button("🗑️ Borrar", key=f"del_nota_{nota['id']}", use_container_width=True):
                             qry("DELETE FROM notas_rapidas WHERE id=?", (nota['id'],))
                             st.rerun()
+
+# ════════════════════════════════════════════════════════════════════════════
+# CAMBIO DE CONTRASEÑA – DOCTORES
+# ════════════════════════════════════════════════════════════════════════════
+if st.session_state.get("rol") == "doctor" and st.session_state.get("user_id"):
+    with st.sidebar:
+        with st.expander("🔑 Cambiar contraseña"):
+            _cp_act = st.text_input("Contraseña actual", type="password", key="cp_act")
+            _cp_new = st.text_input("Nueva contraseña",  type="password", key="cp_new")
+            _cp_rep = st.text_input("Repetir nueva",     type="password", key="cp_rep")
+            if st.button("Guardar", use_container_width=True, key="cp_btn"):
+                import bcrypt as _bcrypt
+                _uid = st.session_state.user_id
+                _row = qry("SELECT password FROM usuarios WHERE id=?", (_uid,), one=True)
+                if not _row or not _bcrypt.checkpw(_cp_act.encode(), _row["password"].encode()):
+                    st.error("Contraseña actual incorrecta.")
+                elif len(_cp_new) < 6:
+                    st.error("Mínimo 6 caracteres.")
+                elif _cp_new != _cp_rep:
+                    st.error("Las contraseñas no coinciden.")
+                else:
+                    _h = _bcrypt.hashpw(_cp_new.encode(), _bcrypt.gensalt()).decode()
+                    qry("UPDATE usuarios SET password=? WHERE id=?", (_h, _uid))
+                    st.success("✅ Contraseña actualizada.")
+
+# ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# TAB MI SECRETARIA – solo rol doctor
+# ════════════════════════════════════════════════════════════════════════════
+if t_sec:
+    with t_sec:
+        st.subheader("🧑‍💼 Mi Secretaria")
+        _doc_uid = st.session_state.get("user_id")
+        _sec_row = db.execute(
+            "SELECT s.id, u.nombre, u.email, u.usuario, u.activo FROM secretarias s "
+            "JOIN usuarios u ON u.id=s.user_id WHERE s.doctor_id=? LIMIT 1", (_doc_uid,)
+        ).fetchone()
+
+        if _sec_row:
+            st.success(f"✅ Secretaria actual: **{_sec_row['nombre']}** ({_sec_row['usuario']})")
+            _s_act = bool(_sec_row["activo"])
+            if st.checkbox("Cuenta activa", value=_s_act, key="sec_activa"):
+                if not _s_act:
+                    qry("UPDATE usuarios SET activo=1 WHERE usuario=?", (_sec_row["usuario"],))
+                    st.rerun()
+            else:
+                if _s_act:
+                    qry("UPDATE usuarios SET activo=0 WHERE usuario=?", (_sec_row["usuario"],))
+                    st.rerun()
+            if st.button("🗑️ Desvincular secretaria", type="secondary"):
+                qry("DELETE FROM secretarias WHERE doctor_id=?", (_doc_uid,))
+                st.warning("Secretaria desvinculada (usuario sigue en BD).")
+                st.rerun()
+        else:
+            st.info("No tienes secretaria asignada. Crea una cuenta aquí:")
+            with st.form("form_sec_nueva"):
+                _s_nom = st.text_input("Nombre completo")
+                _s_usr = st.text_input("Usuario (login)")
+                _s_email = st.text_input("Email")
+                _s_pw = st.text_input("Contraseña (vacío = auto)", placeholder="Dejar vacío = auto")
+                if st.form_submit_button("➕ Crear secretaria"):
+                    import bcrypt as _bcrypt
+                    _s_pw_raw = _s_pw.strip() or _gen_pass()
+                    _s_hash = _bcrypt.hashpw(_s_pw_raw.encode(), _bcrypt.gensalt()).decode()
+                    try:
+                        qry("INSERT INTO usuarios(nombre,email,usuario,password,plan,rol,activo) VALUES(?,?,?,?,'Básico','secretaria',1)",
+                            (_s_nom, _s_email, _s_usr, _s_hash))
+                        _new_uid = db.execute("SELECT id FROM usuarios WHERE usuario=?", (_s_usr,)).fetchone()["id"]
+                        qry("INSERT INTO secretarias(user_id,doctor_id) VALUES(?,?)", (_new_uid, _doc_uid))
+                        _enviar_credenciales(_s_email, _s_usr, _s_pw_raw)
+                        st.success(f"✅ Secretaria creada. Credenciales enviadas a {_s_email}")
+                        st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error: {_ex}")
+
+# TAB ADMIN – GESTIÓN DE USUARIOS Y PLANES
+# ════════════════════════════════════════════════════════════════════════════
+if t_admin:
+    with t_admin:
+        st.subheader("👑 Panel de Administración")
+        au1, au2, au3 = st.tabs(["👤 Usuarios", "📋 Planes", "🧑‍💼 Secretarias"])
+
+        with au1:
+            _usuarios = rows("SELECT id,nombre,email,usuario,plan,rol,activo,licencia,created_at FROM usuarios ORDER BY created_at DESC")
+            if not _usuarios:
+                st.info("No hay usuarios registrados aún.")
+            else:
+                _df = pd.DataFrame([dict(u) for u in _usuarios])
+                _edited = st.data_editor(
+                    _df,
+                    column_config={
+                        "id":         st.column_config.NumberColumn("ID", disabled=True),
+                        "nombre":     st.column_config.TextColumn("Nombre"),
+                        "email":      st.column_config.TextColumn("Email", disabled=True),
+                        "usuario":    st.column_config.TextColumn("Usuario"),
+                        "plan":       st.column_config.SelectboxColumn("Plan", options=["Básico","Profesional","Clínica"]),
+                        "rol":        st.column_config.SelectboxColumn("Rol", options=["doctor","secretaria","admin"]),
+                        "activo":     st.column_config.CheckboxColumn("Activo"),
+                        "licencia":   st.column_config.TextColumn("Licencia", disabled=True),
+                        "created_at": st.column_config.TextColumn("Registro", disabled=True),
+                    },
+                    use_container_width=True, num_rows="fixed", key="editor_users"
+                )
+                col_g, col_e = st.columns([1, 1])
+                with col_g:
+                    if st.button("💾 Guardar cambios", type="primary", use_container_width=True):
+                        for _, row in _edited.iterrows():
+                            qry("UPDATE usuarios SET nombre=?,usuario=?,plan=?,rol=?,activo=? WHERE id=?",
+                                (row["nombre"], row["usuario"], row["plan"], row["rol"], int(row["activo"]), int(row["id"])))
+                            aplicar_permisos_plan(int(row["id"]), row["plan"])
+                        st.success("✅ Cambios guardados.")
+                        st.rerun()
+                with col_e:
+                    _del_id = st.number_input("ID a eliminar", min_value=1, step=1, key="del_user_id")
+                    if st.button("🗑️ Eliminar usuario", type="secondary", use_container_width=True):
+                        qry("DELETE FROM usuarios WHERE id=?", (_del_id,))
+                        st.warning(f"Usuario {_del_id} eliminado.")
+                        st.rerun()
+
+                st.divider()
+                st.markdown("**🔑 Reset de contraseña**")
+                col_r1, col_r2, col_r3 = st.columns([1, 1, 1])
+                with col_r1:
+                    _rst_id = st.number_input("ID usuario", min_value=1, step=1, key="rst_uid")
+                with col_r2:
+                    _rst_pw = st.text_input("Nueva contraseña", key="rst_pw", placeholder="Dejar vacío = auto")
+                with col_r3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("🔑 Resetear", use_container_width=True):
+                        import bcrypt as _bcrypt
+                        _u_row = qry("SELECT email,usuario FROM usuarios WHERE id=?", (_rst_id,), one=True)
+                        if _u_row:
+                            _new_raw = _rst_pw.strip() or _gen_pass()
+                            _new_hash = _bcrypt.hashpw(_new_raw.encode(), _bcrypt.gensalt()).decode()
+                            qry("UPDATE usuarios SET password=? WHERE id=?", (_new_hash, _rst_id))
+                            _enviar_credenciales(_u_row["email"], _u_row["usuario"], _new_raw)
+                            st.success(f"✅ Contraseña reseteada y enviada a {_u_row['email']}")
+                        else:
+                            st.error("ID no encontrado.")
+
+        with au3:
+            st.subheader("🧑‍💼 Gestión de Secretarias")
+            _all_docs = rows("SELECT id, nombre FROM usuarios WHERE rol='doctor' ORDER BY nombre")
+            _doc_opts = {f"{d['nombre']} (#{d['id']})": d['id'] for d in _all_docs}
+            _secs = db.execute(
+                "SELECT s.id, u.nombre, u.usuario, u.email, u.activo, s.doctor_id "
+                "FROM secretarias s JOIN usuarios u ON u.id=s.user_id ORDER BY s.id DESC"
+            ).fetchall()
+            if _secs:
+                _df_s = pd.DataFrame([dict(r) for r in _secs])
+                _ed_s = st.data_editor(_df_s, column_config={
+                    "id":        st.column_config.NumberColumn("ID", disabled=True),
+                    "nombre":    st.column_config.TextColumn("Nombre"),
+                    "usuario":   st.column_config.TextColumn("Usuario", disabled=True),
+                    "email":     st.column_config.TextColumn("Email", disabled=True),
+                    "activo":    st.column_config.CheckboxColumn("Activo"),
+                    "doctor_id": st.column_config.NumberColumn("Doctor ID"),
+                }, use_container_width=True, num_rows="fixed", key="ed_secs")
+                col_sa, col_sb = st.columns(2)
+                with col_sa:
+                    if st.button("💾 Guardar", type="primary", use_container_width=True):
+                        for _, _sr in _ed_s.iterrows():
+                            qry("UPDATE usuarios SET nombre=?,activo=? WHERE usuario=?",
+                                (_sr["nombre"], int(_sr["activo"]), _sr["usuario"]))
+                            qry("UPDATE secretarias SET doctor_id=? WHERE id=?",
+                                (int(_sr["doctor_id"]), int(_sr["id"])))
+                        st.success("✅ Guardado."); st.rerun()
+                with col_sb:
+                    _del_sid = st.number_input("ID secretaria a eliminar", min_value=1, step=1, key="del_sec_id")
+                    if st.button("🗑️ Eliminar", type="secondary", use_container_width=True):
+                        _sec_uid = db.execute("SELECT user_id FROM secretarias WHERE id=?", (_del_sid,)).fetchone()
+                        if _sec_uid:
+                            qry("DELETE FROM secretarias WHERE id=?", (_del_sid,))
+                            qry("DELETE FROM usuarios WHERE id=?", (_sec_uid["user_id"],))
+                        st.rerun()
+            else:
+                st.info("Sin secretarias registradas.")
+            st.divider()
+            st.markdown("**➕ Crear secretaria desde admin**")
+            with st.form("form_sec_admin"):
+                _ac1, _ac2 = st.columns(2)
+                with _ac1:
+                    _as_nom = st.text_input("Nombre")
+                    _as_usr = st.text_input("Usuario")
+                    _as_email = st.text_input("Email")
+                with _ac2:
+                    _as_pw = st.text_input("Contraseña (vacío = auto)")
+                    _as_doc = st.selectbox("Doctor asignado", list(_doc_opts.keys())) if _doc_opts else None
+                if st.form_submit_button("Crear"):
+                    import bcrypt as _bcrypt
+                    _as_pw_raw = _as_pw.strip() or _gen_pass()
+                    _as_hash = _bcrypt.hashpw(_as_pw_raw.encode(), _bcrypt.gensalt()).decode()
+                    _as_did = _doc_opts.get(_as_doc) if _as_doc else None
+                    try:
+                        qry("INSERT INTO usuarios(nombre,email,usuario,password,plan,rol,activo) VALUES(?,?,?,?,'Básico','secretaria',1)",
+                            (_as_nom, _as_email, _as_usr, _as_hash))
+                        _as_uid = db.execute("SELECT id FROM usuarios WHERE usuario=?", (_as_usr,)).fetchone()["id"]
+                        qry("INSERT INTO secretarias(user_id,doctor_id) VALUES(?,?)", (_as_uid, _as_did))
+                        _enviar_credenciales(_as_email, _as_usr, _as_pw_raw)
+                        st.success(f"✅ Secretaria creada → {_as_email}"); st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error: {_ex}")
+
+        with au2:
+            st.markdown("""
+| Plan | Precio | Características |
+|------|--------|----------------|
+| **Básico** | $299/mes | Agenda, Pacientes, Consultas |
+| **Profesional** | $599/mes | Todo Básico + Cobros, Inventario, Recetas |
+| **Clínica** | $999/mes | Todo + Admin, Estadísticas, Multi-usuario |
+""")
+            st.info("Los cambios de plan en la pestaña Usuarios se aplican de inmediato.")
