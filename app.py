@@ -375,6 +375,11 @@ def init_db():
         "ALTER TABLE usuarios ADD COLUMN citas_max INTEGER DEFAULT 50",
         "ALTER TABLE usuarios ADD COLUMN reportes INTEGER DEFAULT 0",
         "ALTER TABLE usuarios ADD COLUMN estado TEXT DEFAULT 'activo'",
+        "ALTER TABLE usuarios ADD COLUMN telefono TEXT DEFAULT ''",
+        "ALTER TABLE usuarios ADD COLUMN especialidad TEXT DEFAULT ''",
+        "ALTER TABLE usuarios ADD COLUMN cedula TEXT DEFAULT ''",
+        "ALTER TABLE usuarios ADD COLUMN notas TEXT DEFAULT ''",
+        "ALTER TABLE usuarios ADD COLUMN logo BLOB",
     ]:
         try:
             conn.execute(_migration)
@@ -485,31 +490,58 @@ def email_recovery(email_dest, code):
     return send_email(email_dest, "Código de recuperación — MedPanel Pro", html)
 
 # ─── RECETA PDF ───────────────────────────────────────────────────────────────
-def generar_receta_pdf(paciente, diagnostico, receta_texto):
+def generar_receta_pdf(paciente, diagnostico, receta_texto, doctor=None):
+    """doctor: dict con keys nombre,especialidad,cedula,telefono,logo(bytes|None)"""
+    from reportlab.platypus import Image as RLImage
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
                             topMargin=.6*inch, bottomMargin=.6*inch,
                             leftMargin=.8*inch, rightMargin=.8*inch)
     sty = getSampleStyleSheet()
+    TEAL = colors.HexColor('#0e7490')
     el = []
-    hdr = Table([[
-        Paragraph(f"<b>{CLINIC_NAME}</b>", sty['Title']),
-        Paragraph(f"<b>{DOCTOR_NAME}</b><br/><font size='9'>{SPECIALTY}</font>", sty['Normal'])
-    ]], colWidths=[3.5*inch, 3.5*inch])
+
+    # ── ENCABEZADO ──
+    dr_nombre = (doctor.get("nombre") if doctor else None) or DOCTOR_NAME
+    dr_esp    = (doctor.get("especialidad") if doctor else None) or SPECIALTY
+    dr_ced    = (doctor.get("cedula") if doctor else None) or ""
+    dr_tel    = (doctor.get("telefono") if doctor else None) or ""
+    dr_logo   = (doctor.get("logo") if doctor else None)
+
+    _hdr_txt = Paragraph(
+        f"<b>{dr_nombre}</b><br/>"
+        f"<font size='9'>{dr_esp}</font><br/>"
+        f"<font size='8' color='#cce8ef'>Ced. Prof.: {dr_ced or '—'}  |  Tel: {dr_tel or '—'}</font>",
+        sty['Normal'])
+
+    if dr_logo:
+        try:
+            _logo_img = RLImage(BytesIO(dr_logo), width=1*inch, height=1*inch, kind='proportional')
+            hdr_data = [[_logo_img, _hdr_txt]]
+            hdr_cols = [1.1*inch, 5.9*inch]
+        except Exception:
+            hdr_data = [[_hdr_txt]]
+            hdr_cols = [7*inch]
+    else:
+        hdr_data = [[_hdr_txt]]
+        hdr_cols = [7*inch]
+
+    hdr = Table(hdr_data, colWidths=hdr_cols)
     hdr.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#0e7490')),
-        ('TEXTCOLOR',(0,0),(-1,-1),colors.white),
+        ('BACKGROUND',(0,0),(-1,-1), TEAL),
+        ('TEXTCOLOR',(0,0),(-1,-1), colors.white),
         ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
         ('PADDING',(0,0),(-1,-1),12),
+        ('ROUNDEDCORNERS',[6]),
     ]))
     el.append(hdr); el.append(Spacer(1,.3*inch))
     el.append(Paragraph(
         f"<b>Paciente:</b> {paciente}   "
         f"<b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y')}", sty['Normal']))
     el.append(Spacer(1,.1*inch))
-    el.append(Paragraph(f"<b>Diagnostico:</b> {diagnostico or '--'}", sty['Normal']))
+    el.append(Paragraph(f"<b>Diagnóstico:</b> {diagnostico or '--'}", sty['Normal']))
     el.append(Spacer(1,.15*inch))
-    el.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#0e7490')))
+    el.append(HRFlowable(width="100%", thickness=1, color=TEAL))
     el.append(Spacer(1,.15*inch))
     el.append(Paragraph("<font size='18' color='#0e7490'><b>Rx</b></font>", sty['Normal']))
     el.append(Spacer(1,.1*inch))
@@ -519,10 +551,12 @@ def generar_receta_pdf(paciente, diagnostico, receta_texto):
             el.append(Spacer(1,.04*inch))
     el.append(Spacer(1,.5*inch))
     el.append(HRFlowable(width="3*inch", thickness=.5, color=colors.grey))
-    el.append(Paragraph(f"Firma: {DOCTOR_NAME}", sty['Normal']))
+    el.append(Paragraph(f"Firma: {dr_nombre}", sty['Normal']))
+    if dr_ced:
+        el.append(Paragraph(f"<font size='8'>Cédula Profesional: {dr_ced}</font>", sty['Normal']))
     el.append(Spacer(1,.08*inch))
     el.append(Paragraph(
-        "<font size='7' color='grey'>Generado con MedPanel Pro — Solo valido con sello y firma</font>",
+        "<font size='7' color='grey'>Generado con MedPanel Pro — Solo válido con sello y firma del médico</font>",
         sty['Normal']))
     doc.build(el)
     buf.seek(0)
@@ -1077,6 +1111,33 @@ else:
     t_admin = tabs[10] if _rol == "admin"  else None
     t_salir = tabs[-1]
     with t_salir:
+        # ── MI PERFIL ──
+        st.markdown("### 👨‍⚕️ Mi Perfil")
+        _uid_p = st.session_state.get("user_id")
+        _perfil = one("SELECT nombre,email,especialidad,cedula,telefono,notas,logo FROM usuarios WHERE id=?",
+                      (_uid_p,)) if _uid_p else None
+        if _perfil:
+            with st.form("form_perfil"):
+                _pp1, _pp2 = st.columns(2)
+                with _pp1:
+                    _pf_nombre = st.text_input("Nombre completo", value=_perfil["nombre"] or "")
+                    _pf_esp    = st.text_input("Especialidad",     value=_perfil["especialidad"] or "")
+                    _pf_ced    = st.text_input("Cédula Profesional",value=_perfil["cedula"] or "")
+                with _pp2:
+                    _pf_tel    = st.text_input("Teléfono",         value=_perfil["telefono"] or "")
+                    _pf_nota   = st.text_area("Notas / Dirección", value=_perfil["notas"] or "", height=80)
+                _pf_logo = st.file_uploader("📷 Logo del consultorio (PNG/JPG, max 1MB)",
+                                            type=["png","jpg","jpeg"])
+                if _perfil["logo"]:
+                    st.image(_perfil["logo"], width=120, caption="Logo actual")
+                if st.form_submit_button("💾 Guardar Perfil", type="primary"):
+                    _logo_bytes = _pf_logo.read() if _pf_logo else _perfil["logo"]
+                    qry("""UPDATE usuarios SET nombre=?,especialidad=?,cedula=?,telefono=?,notas=?,logo=?
+                           WHERE id=?""",
+                        (_pf_nombre,_pf_esp,_pf_ced,_pf_tel,_pf_nota,_logo_bytes,_uid_p))
+                    st.success("✅ Perfil actualizado. Tu receta PDF usará estos datos.")
+                    st.rerun()
+        st.divider()
         # Cambiar contraseña
         st.markdown("### 🔑 Cambiar Contraseña")
         with st.form("form_cambiar_pass"):
@@ -1338,7 +1399,11 @@ if t_rec:
  with t_rec:
     if _gate(2, "💊 Recetas", "Profesional"): st.stop()
     st.subheader("💊 Generador de Recetas PDF")
-    st.markdown('<div class="info-box">Genera recetas médicas profesionales en PDF, listas para imprimir o enviar digitalmente.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Genera recetas médicas profesionales en PDF con tu logo y datos.</div>', unsafe_allow_html=True)
+
+    # Cargar datos del doctor actual
+    _dr_data = one("SELECT nombre,especialidad,cedula,telefono,logo FROM usuarios WHERE id=?",
+                   (st.session_state.get("user_id"),)) if st.session_state.get("user_id") else None
 
     pac_rec = rows("SELECT id, nombre FROM pacientes ORDER BY nombre")
     prmap = {f"{p['nombre']} (#{p['id']})": p['id'] for p in pac_rec}
@@ -1358,7 +1423,8 @@ if t_rec:
                 nombre_pac = (pac_nom if pac_nom
                               else (pac_r.split(" (#")[0] if pac_r != "— Manual —" else "Paciente"))
                 if edad_r: nombre_pac += f", {edad_r} años"
-                pdf = generar_receta_pdf(nombre_pac, diag_r, receta_txt)
+                _doc_dict = dict(_dr_data) if _dr_data else {}
+                pdf = generar_receta_pdf(nombre_pac, diag_r, receta_txt, doctor=_doc_dict)
                 st.success("✅ Receta generada")
                 st.download_button("📥 Descargar Receta PDF", pdf,
                                    f"Receta_{nombre_pac.split(',')[0]}_{date.today()}.pdf",
@@ -2140,12 +2206,22 @@ if t_admin:
                             st.error("ID no encontrado.")
 
                 st.divider()
-                st.markdown("**➕ Crear Doctor**")
+                st.markdown("**➕ Crear Doctor Manualmente**")
                 with st.form("form_nuevo_doctor", clear_on_submit=True):
-                    _nd_nom   = st.text_input("Nombre completo")
-                    _nd_email = st.text_input("Email")
-                    _nd_plan  = st.selectbox("Plan", ["Básico", "Pro"])
-                    if st.form_submit_button("✅ Crear y Activar", type="primary"):
+                    _ndc1, _ndc2 = st.columns(2)
+                    with _ndc1:
+                        _nd_nom  = st.text_input("Nombre completo *")
+                        _nd_email= st.text_input("Email *")
+                        _nd_tel  = st.text_input("Teléfono")
+                    with _ndc2:
+                        _nd_esp  = st.selectbox("Especialidad", [
+                            "Medicina General","Pediatría","Ginecología","Cardiología",
+                            "Dermatología","Ortopedia","Neurología","Oftalmología",
+                            "Odontología","Psiquiatría","Endocrinología","Otra"])
+                        _nd_ced  = st.text_input("Cédula Profesional")
+                        _nd_plan = st.selectbox("Plan", ["Básico","Profesional","Clínica"])
+                    _nd_nota = st.text_area("Notas internas", height=60)
+                    if st.form_submit_button("✅ Crear y Activar — Enviar Correo", type="primary"):
                         if _nd_nom and _nd_email:
                             import bcrypt as _bcrypt, uuid as _uuid
                             _nd_raw  = _gen_pass()
@@ -2153,14 +2229,18 @@ if t_admin:
                             _nd_usr  = f"dr{''.join(c for c in _nd_nom.lower() if c.isalpha())[:8]}{random.randint(100,999)}"
                             _nd_lic  = str(_uuid.uuid4())
                             try:
-                                qry("""INSERT INTO usuarios(nombre,email,usuario,password,licencia,activo,plan,rol,created_at)
-                                       VALUES(?,?,?,?,?,1,?,'doctor',(SELECT datetime('now')))""",
-                                    (_nd_nom, _nd_email, _nd_usr, _nd_hash, _nd_lic, _nd_plan))
+                                qry("""INSERT INTO usuarios
+                                       (nombre,email,usuario,password,licencia,activo,plan,rol,
+                                        telefono,especialidad,cedula,notas,created_at)
+                                       VALUES(?,?,?,?,?,1,?,'doctor',?,?,?,?,(SELECT datetime('now')))""",
+                                    (_nd_nom,_nd_email,_nd_usr,_nd_hash,_nd_lic,_nd_plan,
+                                     _nd_tel,_nd_esp,_nd_ced,_nd_nota))
                                 _nd_id = db.execute("SELECT id FROM usuarios WHERE email=?", (_nd_email,)).fetchone()
                                 if _nd_id:
                                     aplicar_permisos_plan(_nd_id["id"], _nd_plan)
                                 _enviar_credenciales(_nd_email, _nd_usr, _nd_raw)
-                                st.success(f"✅ Doctor creado | Usuario: `{_nd_usr}` | Pass: `{_nd_raw}`")
+                                _log("CREAR", f"Doctor creado: {_nd_email} | Plan: {_nd_plan}")
+                                st.success(f"✅ Doctor creado y correo enviado | Usuario: `{_nd_usr}` | Pass: `{_nd_raw}`")
                                 st.rerun()
                             except Exception as _ex:
                                 st.error(f"Error: {_ex}")
