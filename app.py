@@ -599,13 +599,13 @@ if _qp.get("payment_id") and MP_TOKEN:
         _plan_wh = "Pro" if "pro" in _msg else "Básico"
         # UPDATE: activa cuenta, asigna licencia y password
         qry("""UPDATE usuarios
-               SET activo=1, licencia=?, password=?, usuario=COALESCE(NULLIF(usuario,''),?),
+               SET activo=1, estado='activo', licencia=?, password=?, usuario=COALESCE(NULLIF(usuario,''),?),
                    plan=COALESCE(NULLIF(plan,''),?)
                WHERE email=?""",
             (_lic, _hash, _usuario, _plan_wh, _ref))
         # Si no existía, inserta
-        qry("""INSERT OR IGNORE INTO usuarios(nombre,email,usuario,password,licencia,activo,plan,created_at)
-               VALUES(?,?,?,?,?,1,?,(SELECT datetime('now')))""",
+        qry("""INSERT OR IGNORE INTO usuarios(nombre,email,usuario,password,licencia,activo,estado,plan,created_at)
+               VALUES(?,?,?,?,?,1,'activo',?,(SELECT datetime('now')))""",
             (_pro[0] if _pro else _ref, _ref, _usuario, _hash, _lic, _plan_wh))
         _new_uid = db.execute("SELECT id FROM usuarios WHERE email=?", (_ref,)).fetchone()
         if _new_uid:
@@ -723,10 +723,10 @@ if not st.session_state.logged_in:
                 monto       = precios[s_plan]
                 nombre_plan = s_plan.split("—")[0].strip()
                 # Tarea 1: INSERT pendiente (sin licencia ni password aún)
-                qry("""INSERT OR IGNORE INTO usuarios(nombre,email,plan,activo,created_at)
-                       VALUES(?,?,?,0,(SELECT datetime('now')))""",
+                qry("""INSERT OR IGNORE INTO usuarios(nombre,email,plan,activo,estado,created_at)
+                       VALUES(?,?,?,0,'pendiente_pago',(SELECT datetime('now')))""",
                     (s_nombre, s_email, nombre_plan))
-                qry("UPDATE usuarios SET nombre=?,plan=? WHERE email=? AND activo=0",
+                qry("UPDATE usuarios SET nombre=?,plan=?,estado='pendiente_pago' WHERE email=? AND activo=0",
                     (s_nombre, nombre_plan, s_email))
                 qry("INSERT INTO prospectos(nombre,email,especialidad,telefono,mensaje) VALUES(?,?,?,?,?)",
                     (s_nombre, s_email, s_esp, s_tel, f"[{s_plan}] {s_msj}"))
