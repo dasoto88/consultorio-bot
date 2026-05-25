@@ -577,7 +577,7 @@ if _qp.get("payment_id") and MP_TOKEN:
     _ref    = _resp.get("external_reference", "")
     if _status == "approved" and _ref:
         # Busca prospecto para obtener nombre y plan
-        _pro = qry("SELECT nombre, mensaje FROM prospectos WHERE email=? ORDER BY id DESC LIMIT 1", (_ref,), one=True)
+        _pro = one("SELECT nombre, mensaje FROM prospectos WHERE email=? ORDER BY id DESC LIMIT 1", (_ref,))
         _nombre = (_pro[0] if _pro else _ref.split("@")[0]).replace(" ","").lower()
         _usuario = f"dr{_nombre[:8]}{random.randint(100,999)}"
         _raw_pass = _gen_pass()
@@ -668,7 +668,7 @@ if not st.session_state.logged_in:
                     st.rerun()
                 else:
                     import bcrypt as _bcrypt
-                    _u = qry("SELECT id,nombre,password,plan,activo,rol FROM usuarios WHERE usuario=? LIMIT 1", (user,), one=True)
+                    _u = one("SELECT id,nombre,password,plan,activo,rol FROM usuarios WHERE usuario=? LIMIT 1", (user,))
                     if _u and _u["activo"] and _bcrypt.checkpw(pwd.encode(), _u["password"].encode()):
                         st.session_state.logged_in = True
                         st.session_state.rol  = _u["rol"] or "doctor"
@@ -1906,7 +1906,7 @@ if st.session_state.get("rol") == "doctor" and st.session_state.get("user_id"):
             if st.button("Guardar", use_container_width=True, key="cp_btn"):
                 import bcrypt as _bcrypt
                 _uid = st.session_state.user_id
-                _row = qry("SELECT password FROM usuarios WHERE id=?", (_uid,), one=True)
+                _row = one("SELECT password FROM usuarios WHERE id=?", (_uid,))
                 if not _row or not _bcrypt.checkpw(_cp_act.encode(), _row["password"].encode()):
                     st.error("Contraseña actual incorrecta.")
                 elif len(_cp_new) < 6:
@@ -2023,7 +2023,7 @@ if t_admin:
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button("🔑 Resetear", use_container_width=True):
                         import bcrypt as _bcrypt
-                        _u_row = qry("SELECT email,usuario FROM usuarios WHERE id=?", (_rst_id,), one=True)
+                        _u_row = one("SELECT email,usuario FROM usuarios WHERE id=?", (_rst_id,))
                         if _u_row:
                             _new_raw = _rst_pw.strip() or _gen_pass()
                             _new_hash = _bcrypt.hashpw(_new_raw.encode(), _bcrypt.gensalt()).decode()
