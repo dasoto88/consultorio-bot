@@ -18,16 +18,23 @@ from reportlab.lib.units import inch
 st.set_page_config(page_title="MedPanel Pro", layout="wide",
                    page_icon="🏥", initial_sidebar_state="collapsed")
 
-# ─── KEEP-ALIVE ──────────────────────────────────────────────────────────────
+# ─── KEEP-ALIVE MEJORADO ─────────────────────────────────────────────────────
+# Ping cada 4 min a las 3 apps para que NUNCA duerman
+_APPS_PING = [
+    "https://consultorio-bot.streamlit.app/_stcore/health",
+    "https://contaxpert-app.streamlit.app/_stcore/health",
+    "https://aventura-tablas-pro.streamlit.app/_stcore/health",
+]
 @st.cache_resource
 def _keep_alive():
     def _ping():
         while True:
-            time.sleep(290)
-            try:
-                requests.get("https://consultorio-bot.streamlit.app/_stcore/health", timeout=10)
-            except Exception:
-                pass
+            time.sleep(240)  # cada 4 minutos
+            for url in _APPS_PING:
+                try:
+                    requests.get(url, timeout=10)
+                except Exception:
+                    pass
     threading.Thread(target=_ping, daemon=True).start()
     return True
 _keep_alive()
