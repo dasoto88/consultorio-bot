@@ -2033,6 +2033,34 @@ if t_admin:
                         else:
                             st.error("ID no encontrado.")
 
+                st.divider()
+                st.markdown("**➕ Crear Doctor**")
+                with st.form("form_nuevo_doctor", clear_on_submit=True):
+                    _nd_nom   = st.text_input("Nombre completo")
+                    _nd_email = st.text_input("Email")
+                    _nd_plan  = st.selectbox("Plan", ["Básico", "Pro"])
+                    if st.form_submit_button("✅ Crear y Activar", type="primary"):
+                        if _nd_nom and _nd_email:
+                            import bcrypt as _bcrypt, uuid as _uuid
+                            _nd_raw  = _gen_pass()
+                            _nd_hash = _bcrypt.hashpw(_nd_raw.encode(), _bcrypt.gensalt()).decode()
+                            _nd_usr  = f"dr{''.join(c for c in _nd_nom.lower() if c.isalpha())[:8]}{random.randint(100,999)}"
+                            _nd_lic  = str(_uuid.uuid4())
+                            try:
+                                qry("""INSERT INTO usuarios(nombre,email,usuario,password,licencia,activo,plan,rol,created_at)
+                                       VALUES(?,?,?,?,?,1,?,'doctor',(SELECT datetime('now')))""",
+                                    (_nd_nom, _nd_email, _nd_usr, _nd_hash, _nd_lic, _nd_plan))
+                                _nd_id = db.execute("SELECT id FROM usuarios WHERE email=?", (_nd_email,)).fetchone()
+                                if _nd_id:
+                                    aplicar_permisos_plan(_nd_id["id"], _nd_plan)
+                                _enviar_credenciales(_nd_email, _nd_usr, _nd_raw)
+                                st.success(f"✅ Doctor creado | Usuario: `{_nd_usr}` | Pass: `{_nd_raw}`")
+                                st.rerun()
+                            except Exception as _ex:
+                                st.error(f"Error: {_ex}")
+                        else:
+                            st.warning("Nombre y email son obligatorios.")
+
         with au3:
             st.subheader("🧑‍💼 Gestión de Secretarias")
             _all_docs = rows("SELECT id, nombre FROM usuarios WHERE rol='doctor' ORDER BY nombre")
