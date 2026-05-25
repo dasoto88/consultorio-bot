@@ -360,6 +360,12 @@ def init_db():
         doctor_id INTEGER,
         created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS admin_logs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        accion TEXT,
+        detalle TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
     """)
     conn.commit()
     for _migration in [
@@ -547,6 +553,9 @@ def mostrar_logout_tab():
 
 def _gen_pass(n=8):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=n))
+
+def _log(accion, detalle):
+    qry("INSERT INTO admin_logs(accion,detalle) VALUES(?,?)", (accion, detalle))
 
 def _enviar_credenciales(email, usuario, password):
     if not SMTP_USER or not SMTP_PASS:
@@ -1998,7 +2007,7 @@ if t_sec:
 if t_admin:
     with t_admin:
         st.subheader("👑 Panel de Administración")
-        au1, au2, au3, au4 = st.tabs(["👤 Usuarios", "📋 Planes", "🧑‍💼 Secretarias", "📨 Prospectos"])
+        au1, au2, au3, au4, au5 = st.tabs(["👤 Usuarios", "📋 Planes", "🧑‍💼 Secretarias", "📨 Prospectos", "📜 Logs"])
 
         with au1:
             _usuarios = rows("SELECT id,nombre,email,usuario,plan,rol,activo,licencia,created_at FROM usuarios ORDER BY created_at DESC")
@@ -2044,6 +2053,7 @@ if t_admin:
                 with col_e:
                     _del_id = st.number_input("ID a eliminar", min_value=1, step=1, key="del_user_id")
                     if st.button("🗑️ Eliminar usuario", type="secondary", use_container_width=True):
+                        _log("ELIMINAR", f"Usuario id={int(_del_id)} eliminado por admin")
                         qry("DELETE FROM usuarios WHERE id=?", (_del_id,))
                         st.warning(f"Usuario {_del_id} eliminado.")
                         st.rerun()
@@ -2182,11 +2192,22 @@ if t_admin:
                                 aplicar_permisos_plan(_p['id'], _p['plan'] or 'Básico')
                                 _u = one("SELECT email,usuario FROM usuarios WHERE id=?", (_p['id'],))
                                 _enviar_credenciales(_u['email'], _u['usuario'], _raw)
+                                _log("ACTIVAR", f"Prospecto activado: {_u['email']}")
                                 st.success(f"✅ Activado → {_u['email']}"); st.rerun()
                         with _pc2:
                             if st.button("🗑️ Eliminar", key=f"del_p_{_p['id']}", type="secondary", use_container_width=True):
+                                _log("ELIMINAR", f"Prospecto eliminado: {_p['email']}")
                                 qry("DELETE FROM usuarios WHERE id=?", (_p['id'],))
                                 st.warning("Eliminado."); st.rerun()
+
+        with au5:
+            st.subheader("📜 Registro de acciones admin")
+            _logs = rows("SELECT id,accion,detalle,created_at FROM admin_logs ORDER BY id DESC LIMIT 200")
+            if not _logs:
+                st.info("Sin actividad registrada aún.")
+            else:
+                st.dataframe(pd.DataFrame([dict(l) for l in _logs]),
+                             use_container_width=True, hide_index=True)
 
         with au2:
             st.markdown("""
