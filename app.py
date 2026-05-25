@@ -366,6 +366,7 @@ def init_db():
         "ALTER TABLE usuarios ADD COLUMN rol TEXT DEFAULT 'doctor'",
         "ALTER TABLE usuarios ADD COLUMN citas_max INTEGER DEFAULT 50",
         "ALTER TABLE usuarios ADD COLUMN reportes INTEGER DEFAULT 0",
+        "ALTER TABLE usuarios ADD COLUMN estado TEXT DEFAULT 'activo'",
     ]:
         try:
             conn.execute(_migration)
