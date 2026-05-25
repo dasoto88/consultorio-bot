@@ -1997,7 +1997,7 @@ if t_sec:
 if t_admin:
     with t_admin:
         st.subheader("👑 Panel de Administración")
-        au1, au2, au3 = st.tabs(["👤 Usuarios", "📋 Planes", "🧑‍💼 Secretarias"])
+        au1, au2, au3, au4 = st.tabs(["👤 Usuarios", "📋 Planes", "🧑‍💼 Secretarias", "📨 Prospectos"])
 
         with au1:
             _usuarios = rows("SELECT id,nombre,email,usuario,plan,rol,activo,licencia,created_at FROM usuarios ORDER BY created_at DESC")
@@ -2147,6 +2147,34 @@ if t_admin:
                         st.success(f"✅ Secretaria creada → {_as_email}"); st.rerun()
                     except Exception as _ex:
                         st.error(f"Error: {_ex}")
+
+        with au4:
+            st.subheader("📨 Prospectos pendientes de pago")
+            _prosp = rows("SELECT id,nombre,email,plan,activo,licencia FROM usuarios WHERE activo=0 ORDER BY id DESC")
+            if not _prosp:
+                st.info("No hay prospectos pendientes.")
+            else:
+                import bcrypt as _bcrypt, uuid as _uuid
+                for _p in _prosp:
+                    with st.expander(f"📧 {_p['email']} — {_p['nombre']} ({_p['plan']})"):
+                        _pc1, _pc2 = st.columns(2)
+                        with _pc1:
+                            if st.button("✅ Activar Manual", key=f"act_{_p['id']}", type="primary", use_container_width=True):
+                                _raw = _gen_pass()
+                                _hsh = _bcrypt.hashpw(_raw.encode(), _bcrypt.gensalt()).decode()
+                                _lic = str(_uuid.uuid4())
+                                _usr = f"dr{''.join(c for c in (_p['nombre'] or _p['email']).lower() if c.isalpha())[:8]}{random.randint(100,999)}"
+                                qry("""UPDATE usuarios SET activo=1,licencia=?,password=?,
+                                       usuario=COALESCE(NULLIF(usuario,''),?) WHERE id=?""",
+                                    (_lic, _hsh, _usr, _p['id']))
+                                aplicar_permisos_plan(_p['id'], _p['plan'] or 'Básico')
+                                _u = one("SELECT email,usuario FROM usuarios WHERE id=?", (_p['id'],))
+                                _enviar_credenciales(_u['email'], _u['usuario'], _raw)
+                                st.success(f"✅ Activado → {_u['email']}"); st.rerun()
+                        with _pc2:
+                            if st.button("🗑️ Eliminar", key=f"del_p_{_p['id']}", type="secondary", use_container_width=True):
+                                qry("DELETE FROM usuarios WHERE id=?", (_p['id'],))
+                                st.warning("Eliminado."); st.rerun()
 
         with au2:
             st.markdown("""
