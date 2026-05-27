@@ -29,7 +29,7 @@ _APPS_PING = [
 def _keep_alive():
     def _ping():
         while True:
-            time.sleep(240)  # cada 4 minutos
+            time.sleep(60)  # cada 1 minuto
             for url in _APPS_PING:
                 try:
                     requests.get(url, timeout=10)
